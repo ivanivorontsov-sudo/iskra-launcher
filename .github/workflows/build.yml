@@ -1,0 +1,90 @@
+name: build
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore Iskra.sln
+      - name: Build
+        run: dotnet build Iskra.sln -c Release --no-restore
+      - name: Test (поиск и ранжирование)
+        run: dotnet test tests/Iskra.Core.Tests -c Release --no-build --logger "trx;LogFileName=tests.trx"
+      - name: Upload test results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/tests.trx'
+          retention-days: 3
+
+  package:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Version from tag
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}"
+          if ($v -match '^v\d') { $v = $v.Substring(1) } else { $v = "1.0.0" }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Publish (self-contained win-x64)
+        run: dotnet publish src/Iskra.App -c Release -r win-x64 --self-contained -o publish /p:Version=${{ steps.ver.outputs.version }}
+      - name: Render theme screenshots (live WPF)
+        continue-on-error: true
+        shell: pwsh
+        run: dotnet run --project tools/ThemeShots -c Release -- screens
+      - name: Portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $stage = "stage/Iskra"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item publish/Iskra.exe $stage/
+          if (Test-Path publish/Fonts/licenses) { Copy-Item publish/Fonts/licenses $stage/licenses -Recurse }
+          if (Test-Path THIRD-PARTY-NOTICES.md) { Copy-Item THIRD-PARTY-NOTICES.md $stage/ }
+          Compress-Archive -Path stage/Iskra -DestinationPath "dist/Iskra-Portable-${{ steps.ver.outputs.version }}.zip" -Force
+      - name: Inno Setup installer (per-user, no admin)
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=${{ steps.ver.outputs.version }} /DSourceDir=..\publish installer/iskra.iss
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item installer/output/*.exe dist/ -ErrorAction SilentlyContinue
+      - name: Upload artifacts
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: iskra-${{ steps.ver.outputs.version }}
+          path: |
+            dist/*.zip
+            dist/*.exe
+            screens/*.png
+          retention-days: 3
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.exe
+          generate_release_notes: true

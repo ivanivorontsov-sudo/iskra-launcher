@@ -28,6 +28,9 @@ internal static class Program
                 case "--restore-lockscreen":
                     RestoreLockScreenFromBackup();
                     return 0;
+                case "--restore-silent":
+                    try { new SystemThemeApplier().Restore(includeHklm: AppInfo.IsAdmin()); } catch (Exception ex) { Log.Error("restore-silent", ex); }
+                    return 0;
             }
         }
 
