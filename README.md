@@ -59,7 +59,7 @@
 
 ## Сборка
 ```
-dotnet build Iskra.sln -c Release
+dotnet build Iskra.slnx -c Release
 dotnet test tests/Iskra.Core.Tests
 dotnet publish src/Iskra.App -c Release -r win-x64 --self-contained -o publish
 ```
