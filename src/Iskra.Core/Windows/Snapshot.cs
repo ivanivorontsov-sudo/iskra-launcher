@@ -10,6 +10,7 @@ public sealed class RegOriginal
     public RegHive Hive { get; set; }
     public string Key { get; set; } = "";
     public string Name { get; set; } = "";
+    public string Category { get; set; } = "";
     public bool ValueExisted { get; set; }
     /// <summary>Самый верхний ключ, которого не было и который создадим мы (удалить при откате).</summary>
     public string? CreatedKeyRoot { get; set; }

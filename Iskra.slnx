@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Iskra.App/Iskra.App.csproj" />
+    <Project Path="src/Iskra.Core/Iskra.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Iskra.Core.Tests/Iskra.Core.Tests.csproj" />
+  </Folder>
+</Solution>
