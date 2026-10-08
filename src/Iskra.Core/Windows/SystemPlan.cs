@@ -180,24 +180,16 @@ public static class SystemPlan
         return w;
     }
 
-    /// <summary>Шрифт-замена для «Segoe UI» (HKLM, только с правами администратора, экспериментально).</summary>
-    public static readonly string[] SegoeUiFontValues =
-    {
-        "Segoe UI (TrueType)", "Segoe UI Bold (TrueType)", "Segoe UI Bold Italic (TrueType)", "Segoe UI Italic (TrueType)",
-        "Segoe UI Light (TrueType)", "Segoe UI Semibold (TrueType)", "Segoe UI Symbol (TrueType)",
-    };
     public const string FontsKey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts";
     public const string FontSubstitutesKey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\FontSubstitutes";
     public const string PersonalizationCspKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP";
 
+    /// <summary>
+    /// УСТАРЕЛО: старая версия обнуляла штатные записи Segoe UI, из-за чего ломался откат. Теперь делегирует
+    /// безопасной <see cref="FontPlan.BuildSystemFontSubstitute"/> (без обнуления). Оставлено для совместимости.
+    /// </summary>
     public static List<RegWrite> BuildSystemFont(string familyName, string fontFileName)
-    {
-        var w = new List<RegWrite>();
-        foreach (var v in SegoeUiFontValues) w.Add(new RegWrite(RegHive.LocalMachine, FontsKey, v, RegKind.String, "", "font"));
-        w.Add(new RegWrite(RegHive.LocalMachine, FontsKey, familyName + " (TrueType)", RegKind.String, fontFileName, "font"));
-        w.Add(new RegWrite(RegHive.LocalMachine, FontSubstitutesKey, "Segoe UI", RegKind.String, familyName, "font"));
-        return w;
-    }
+        => FontPlan.BuildSystemFontSubstitute(familyName, fontFileName);
 
     public static List<RegWrite> BuildLockScreenCsp(string imagePath) => new()
     {
