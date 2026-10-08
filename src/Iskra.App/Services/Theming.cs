@@ -23,8 +23,22 @@ internal sealed class Theming
     public SolidColorBrush Brush(string hex) => Freeze(new SolidColorBrush(Col(hex)));
     public Color Background => Col(Theme.Palette.Background);
     public Color Background2 => Col(Theme.Palette.Background2);
-    public SolidColorBrush Foreground => Brush(Theme.Palette.Foreground);
-    public SolidColorBrush ForegroundDim => Brush(Theme.Palette.ForegroundDim);
+
+    /// <summary>Непрозрачная база, на которой фактически рисуется текст (фон темы, альфа убрана).</summary>
+    public CW.Argb BaseOpaque
+    {
+        get { var a = CW.Argb.Parse(Theme.Palette.Background); return a with { A = 0xFF }; }
+    }
+
+    /// <summary>Текст с гарантией контраста относительно базового фона (защита от «белого по белому»).</summary>
+    public SolidColorBrush Foreground
+    {
+        get { var c = CW.Argb.Readable(CW.Argb.Parse(Theme.Palette.Foreground), BaseOpaque, 4.0); return Freeze(new SolidColorBrush(Color.FromArgb(c.A, c.R, c.G, c.B))); }
+    }
+    public SolidColorBrush ForegroundDim
+    {
+        get { var c = CW.Argb.Readable(CW.Argb.Parse(Theme.Palette.ForegroundDim), BaseOpaque, 2.6); return Freeze(new SolidColorBrush(Color.FromArgb(c.A, c.R, c.G, c.B))); }
+    }
     public SolidColorBrush Accent => Brush(Theme.Palette.Accent);
     public SolidColorBrush Accent2 => Brush(Theme.Palette.Accent2);
     public SolidColorBrush AccentForeground => Brush(Theme.Palette.AccentForeground);
@@ -32,12 +46,16 @@ internal sealed class Theming
     public SolidColorBrush SurfaceHover => Brush(Theme.Palette.SurfaceHover);
     public SolidColorBrush BorderBrush => Brush(Theme.Palette.Border);
 
-    /// <summary>Фон окна: при материале слюды/акрила — полупрозрачный поверх DWM; иначе градиент/сплошной.</summary>
-    public Brush WindowBackground(bool reduceEffects)
+    /// <summary>
+    /// Фон карточки окна. Если DWM-материал реально рисуется (<paramref name="backdropAvailable"/>),
+    /// оставляем немного прозрачности (но не ниже 0.62, чтобы текст был читаем); иначе — полностью непрозрачный фон.
+    /// Это и есть защита от «засветлённого» окна с невидимым текстом.
+    /// </summary>
+    public Brush WindowBackground(bool reduceEffects, bool backdropAvailable)
     {
-        var o = Theme.Palette.BackgroundOpacity;
-        bool material = !reduceEffects && Theme.Effects.Material is Material.Mica or Material.Acrylic or Material.MicaAlt;
-        byte alpha = material ? (byte)Math.Clamp(o * 255, 0, 255) : (byte)255;
+        bool material = !reduceEffects && backdropAvailable &&
+                        Theme.Effects.Material is Material.Mica or Material.Acrylic or Material.MicaAlt;
+        byte alpha = material ? (byte)Math.Clamp(Math.Max(Theme.Palette.BackgroundOpacity, 0.62) * 255, 0, 255) : (byte)255;
         var c1 = Background; c1.A = alpha;
         if (Theme.Effects.Material == Material.Gradient || Theme.Effects.Background is BackgroundFx.Aurora or BackgroundFx.NeonGrid)
         {
@@ -46,6 +64,9 @@ internal sealed class Theming
         }
         return Freeze(new SolidColorBrush(c1));
     }
+
+    /// <summary>Непрозрачный фон уровня окна (на случай, когда материал недоступен — чтобы не было стекла под текстом).</summary>
+    public Brush WindowOpaque => Freeze(new SolidColorBrush(Color.FromArgb(0xFF, Background.R, Background.G, Background.B)));
 
     public FontFamily UiFont => Font(Theme.Fonts.Ui);
     public FontFamily TitleFont => Font(Theme.Fonts.Title);

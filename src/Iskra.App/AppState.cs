@@ -43,18 +43,21 @@ internal sealed class AppState
         ConfigureEngine();
         _hotkeys = new HotkeyManager(messageWindow);
         RegisterHotkeys();
-        SetupStartHook();
         Services.SystemCommands.IskraHandler = HandleIskraCommand;
         IndexAsync();
-        if (Settings.ApplyThemeToWindows && System.HasSnapshot)
-            DwmWatcher.Instance.Configure(Settings.CurrentTheme(), Settings.SystemOptions.WindowFrames);
+        if (!SafeMode.Active)
+        {
+            SetupStartHook();
+            if (Settings.ApplyThemeToWindows && System.HasSnapshot)
+                DwmWatcher.Instance.Configure(Settings.CurrentTheme(), Settings.SystemOptions.WindowFrames);
+        }
     }
 
     // ---------- Настройки ----------
     public void LoadSettings()
     {
-        try { Settings = AppSettings.FromJson(File.Exists(Paths.Settings) ? File.ReadAllText(Paths.Settings) : null); }
-        catch (Exception ex) { Log.Error("Чтение настроек", ex); Settings = new(); }
+        Settings = AppSettings.LoadOrHeal(Paths.Settings, out bool healed);
+        if (healed) { Log.Warn("Настройки восстановлены из резервной копии / приведены к корректным."); try { SaveSettings(); } catch { } }
         try { if (File.Exists(Paths.Usage)) { var u = UsageStore.Deserialize(File.ReadAllText(Paths.Usage)); CopyUsage(u); } }
         catch (Exception ex) { Log.Error("Чтение истории", ex); }
         ApplyEngineConfig();
@@ -201,11 +204,18 @@ internal sealed class AppState
         Theming = new Theming(theme);
         SaveSettings();
         ThemeChanged?.Invoke();
-        if (applyToWindows && Settings.ApplyThemeToWindows)
+        if (applyToWindows && Settings.ApplyThemeToWindows && !SafeMode.Active)
         {
-            var screen = ScreenSize();
-            var report = await System.ApplyAsync(theme, Settings.SystemOptions, screen);
-            Log.Info($"Тема «{theme.Name}» → Windows: {string.Join(", ", report.Changed)}");
+            try
+            {
+                // Значки Windows (папки/корзина/ярлыки) меняем только если тема это разрешает (и это обратимо).
+                Settings.SystemOptions.ShellIcons = theme.Icon.ApplySystemWide;
+                Settings.SystemOptions.ShapedShortcutIcons = theme.Icon.ApplySystemWide;
+                var screen = ScreenSize();
+                var report = await System.ApplySerializedAsync(theme, Settings.SystemOptions, screen);
+                Log.Info($"Тема «{theme.Name}» → Windows: {string.Join(", ", report.Changed)}");
+            }
+            catch (Exception ex) { Log.Error("Применение темы к Windows", ex); }
         }
     }
 
@@ -247,8 +257,8 @@ internal sealed class AppState
         // Переключаем системный тёмный/светлый режим в текущей теме.
         var t = Settings.CurrentTheme().Clone();
         t.System.AppsDark = !t.System.AppsDark; t.System.SystemDark = !t.System.SystemDark;
-        var o = new SystemApplyOptions { Colors = true, Wallpaper = false, LockScreen = false, Cursors = false, Sounds = false, IconSpacing = false, WindowFrames = false, ContextMenu = false, Explorer = false, Taskbar = false };
-        _ = System.ApplyAsync(t, o, ScreenSize());
+        var o = new SystemApplyOptions { Colors = true, Wallpaper = false, LockScreen = false, Cursors = false, Sounds = false, IconSpacing = false, WindowFrames = false, ContextMenu = false, Explorer = false, Taskbar = false, WindowMetrics = false };
+        _ = System.ApplySerializedAsync(t, o, ScreenSize());
     }
 
     public void OnLaunch(SearchItem item, string? query)
@@ -265,6 +275,7 @@ internal sealed class AppState
 
     public bool ReduceEffects()
     {
+        if (SafeMode.Active) return true;
         if (Settings.Effects == EffectsMode.Reduced) return true;
         if (Settings.Effects == EffectsMode.Full) return false;
         // Auto: учитываем системные настройки анимаций и экономию заряда.

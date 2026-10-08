@@ -50,12 +50,12 @@ internal sealed partial class SettingsWindow : Window
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero) WindowStyler.ApplyToHwnd(hwnd, _state.Settings.CurrentTheme(), _state.ReduceEffects());
-        Background = new SolidColorBrush(T.Background);
+        Background = (SolidColorBrush)T.WindowOpaque;
     }
 
     private void Build()
     {
-        Background = new SolidColorBrush(T.Background);
+        Background = (SolidColorBrush)T.WindowOpaque;
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(240) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });

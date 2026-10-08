@@ -44,19 +44,22 @@ internal sealed class LiveTile : Border
 
         var content = new Grid();
         var glyph = item.Glyph ?? "\uE737";
-        var icon = UiKit.Glyph(glyph, sizeUnit == 1 ? 18 : 30, t.Foreground);
-        icon.HorizontalAlignment = HorizontalAlignment.Center;
-        icon.VerticalAlignment = sizeUnit == 1 ? VerticalAlignment.Center : VerticalAlignment.Top;
-        icon.Margin = new Thickness(0, sizeUnit == 1 ? 0 : 14, 0, 0);
+        double isz = sizeUnit == 1 ? 26 : 42;
+        var iconHost = new Grid { Width = isz, Height = isz, HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = sizeUnit == 1 ? VerticalAlignment.Center : VerticalAlignment.Top,
+            Margin = new Thickness(0, sizeUnit == 1 ? 0 : 14, 0, 0) };
+        iconHost.Children.Add(ShapedIcon.Build(t, isz, null, glyph));
+        content.Children.Add(iconHost);
 
-        // Иконка приложения, если есть.
+        // Иконка приложения, если есть — в форме темы.
         if (item.Kind is ItemKind.App or ItemKind.StoreApp or ItemKind.File or ItemKind.Folder)
         {
-            var img = new Image { Width = 30, Height = 30, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 14, 0, 0) };
-            System.Threading.Tasks.Task.Run(() => { var b = IconLoader.Load(item.FilePath ?? item.Target); if (b != null) Dispatcher.BeginInvoke(() => { img.Source = b; }); });
-            content.Children.Add(img);
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var b = IconLoader.Load(item.FilePath ?? item.Target);
+                if (b != null) Dispatcher.BeginInvoke(() => { iconHost.Children.Clear(); iconHost.Children.Add(ShapedIcon.Build(t, isz, b, null)); });
+            });
         }
-        else content.Children.Add(icon);
 
         var label = new TextBlock
         {

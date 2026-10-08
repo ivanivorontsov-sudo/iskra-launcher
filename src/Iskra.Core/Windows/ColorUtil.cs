@@ -83,6 +83,32 @@ public readonly record struct Argb(byte A, byte R, byte G, byte B)
     }
 
     public Argb WithAlpha(byte a) => this with { A = a };
+
+    /// <summary>Коэффициент контраста WCAG между двумя цветами (1..21).</summary>
+    public static double Contrast(Argb a, Argb b)
+    {
+        double la = a.Luminance(), lb = b.Luminance();
+        double hi = Math.Max(la, lb), lo = Math.Min(la, lb);
+        return (hi + 0.05) / (lo + 0.05);
+    }
+
+    /// <summary>Смешать поверх непрозрачного фона (учёт альфы) — получить фактически видимый цвет.</summary>
+    public Argb Over(Argb bg)
+    {
+        double fa = A / 255.0, ba = 1 - fa;
+        byte M(byte f, byte b) => (byte)Math.Round(f * fa + b * ba);
+        return new Argb(0xFF, M(R, bg.R), M(G, bg.G), M(B, bg.B));
+    }
+
+    /// <summary>Гарантированно читаемый текст поверх bg: вернуть желаемый, если контраст достаточен, иначе чёрный/белый.</summary>
+    public static Argb Readable(Argb desired, Argb bg, double min = 4.0)
+    {
+        var eff = desired.A < 0xFF ? desired.Over(bg) : desired;
+        if (Contrast(eff, bg) >= min) return desired;
+        var black = new Argb(0xFF, 0x12, 0x12, 0x14);
+        var white = new Argb(0xFF, 0xF4, 0xF4, 0xF6);
+        return Contrast(white, bg) >= Contrast(black, bg) ? white : black;
+    }
 }
 
 /// <summary>Палитра акцента Windows (8 оттенков RGBA, 32 байта) для HKCU\…\Explorer\Accent\AccentPalette.</summary>

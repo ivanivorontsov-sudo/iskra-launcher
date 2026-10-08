@@ -34,6 +34,39 @@ internal static class ShellLink
         catch { return null; }
     }
 
+    /// <summary>Исходный значок ярлыка в формате "путь,индекс" (пусто — значок не задан).</summary>
+    public static string GetIconLocation(string lnkPath)
+    {
+        try
+        {
+            var link = (IShellLinkW)new CShellLink();
+            ((IPersistFile)link).Load(lnkPath, 0);
+            var sb = new System.Text.StringBuilder(1024);
+            link.GetIconLocation(sb, sb.Capacity, out int idx);
+            var icon = sb.ToString();
+            return string.IsNullOrEmpty(icon) ? "" : $"{icon},{idx}";
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>Устанавливает значок ярлыка. loc = "путь,индекс" или "" чтобы снять (вернуть к значку цели).</summary>
+    public static bool SetIconLocation(string lnkPath, string loc)
+    {
+        try
+        {
+            var link = (IShellLinkW)new CShellLink();
+            var pf = (IPersistFile)link;
+            pf.Load(lnkPath, 0);
+            string path = loc; int idx = 0;
+            int comma = loc.LastIndexOf(',');
+            if (comma > 1 && int.TryParse(loc.AsSpan(comma + 1), out var n)) { path = loc[..comma]; idx = n; }
+            link.SetIconLocation(path, idx);
+            pf.Save(lnkPath, true);
+            return true;
+        }
+        catch (Exception ex) { Log.Warn($"Значок ярлыка {lnkPath}: {ex.Message}"); return false; }
+    }
+
     [ComImport, Guid("00021401-0000-0000-C000-000000000046")] private class CShellLink { }
 
     [ComImport, Guid("000214F9-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

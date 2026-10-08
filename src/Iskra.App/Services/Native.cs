@@ -88,4 +88,9 @@ internal static class Native
     [DllImport("shell32.dll")] public static extern UIntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
 
     [DllImport("user32.dll")] public static extern short VkKeyScan(char ch);
+
+    // ---- Обновление кэша значков ----
+    public const uint SHCNE_ASSOCCHANGED = 0x08000000;
+    public const uint SHCNF_IDLIST = 0x0;
+    [DllImport("shell32.dll")] public static extern void SHChangeNotify(uint eventId, uint flags, IntPtr item1, IntPtr item2);
 }

@@ -16,6 +16,7 @@ internal static class Paths
     public static string Cursors => Ensure(Path.Combine(Generated, "cursors"));
     public static string Sounds => Ensure(Path.Combine(Generated, "sounds"));
     public static string Wallpapers => Ensure(Path.Combine(Generated, "wallpapers"));
+    public static string Icons => Ensure(Path.Combine(Generated, "icons"));
     public static string FontsForSystem => Ensure(Path.Combine(Root, "fonts"));
     public static string LockScreenBackup => Path.Combine(Root, "lockscreen-backup");
     public static string Log => Path.Combine(Root, "iskra.log");

@@ -69,6 +69,12 @@ internal sealed partial class SettingsWindow
         root.Children.Add(LabeledRow(L.T("editor.wallpaper"), EnumCombo<WallpaperKind>(theme.System.Wallpaper, v => { theme.System.Wallpaper = v; Live(); })));
         root.Children.Add(LabeledRow(L.T("editor.corners"), EnumCombo<CornerStyle>(theme.System.Corners, v => { theme.System.Corners = v; Live(); })));
 
+        // Значки: форма (капля/круг/шестиугольник/звезда/лист/клякса/пиксель…), фон и применение к Windows.
+        root.Children.Add(H2(L.T("editor.icons")));
+        root.Children.Add(LabeledRow(L.T("editor.iconshape"), EnumCombo<IconShape>(theme.Icon.Shape, v => { theme.Icon.Shape = v; Live(); })));
+        root.Children.Add(LabeledRow(L.T("editor.iconfill"), EnumCombo<IconFill>(theme.Icon.Fill, v => { theme.Icon.Fill = v; Live(); })));
+        root.Children.Add(Check(L.T("editor.iconsystem"), theme.Icon.ApplySystemWide, v => { theme.Icon.ApplySystemWide = v; Live(); }));
+
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 16, 0, 0) };
         buttons.Children.Add(Btn(L.T("editor.save"), () => { _ = _state.ApplyThemeAsync(theme, _state.Settings.ApplyThemeToWindows); }, true));
         buttons.Children.Add(Btn(L.T("themes.export"), () => ExportTheme(theme)));

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Iskra.Core.Windows;
+
 namespace Iskra.Core.Themes;
 
 public enum Material { Solid, Mica, Acrylic, MicaAlt, Gradient }
@@ -14,6 +16,10 @@ public enum CornerStyle { Default, Round, RoundSmall, Square }
 public enum WindowBackdrop { Default, Mica, Acrylic, MicaAlt, None }
 public enum TaskbarAlign { Unchanged, Left, Center }
 public enum StartStyle { Menu, FullScreen }
+/// <summary>Форма маски значков: капля, круг, сквиркл, шестиугольник, ромб, скруг. треугольник, восьмиугольник, лист, звезда, клякса, пиксель, скруг. квадрат.</summary>
+public enum IconShape { RoundedSquare, Circle, Squircle, Droplet, Hexagon, Rhombus, RoundedTriangle, Octagon, Leaf, Star, Blob, Pixel }
+/// <summary>Фон плитки значка: градиент акцента, сплошной, стекло (прозрачный), нет фона.</summary>
+public enum IconFill { AccentGradient, Solid, Glass, None }
 
 public sealed class ThemePalette
 {
@@ -100,6 +106,23 @@ public sealed class SystemProfile
     public bool PreferDock { get; set; }
     /// <summary>Шрифт интерфейса Windows (ЭКСПЕРИМЕНТАЛЬНО, применяется только если включено отдельно).</summary>
     public string? SystemFont { get; set; }
+    /// <summary>Метрики окон (0 = не трогать). Ширина полосы прокрутки, высота заголовка, отступ рамки (px).</summary>
+    public int ScrollbarWidth { get; set; }
+    public int TitleBarHeight { get; set; }
+    public int BorderPadding { get; set; } = -1;
+}
+
+/// <summary>Как «Искра» рисует значки приложений: форма-маска + фон + тень/блик.</summary>
+public sealed class IconStyle
+{
+    public IconShape Shape { get; set; } = IconShape.Squircle;
+    public IconFill Fill { get; set; } = IconFill.AccentGradient;
+    public bool Shadow { get; set; } = true;
+    public bool Gloss { get; set; } = true;
+    /// <summary>Доля отступа значка внутри формы (0..0.4).</summary>
+    public double Padding { get; set; } = 0.18;
+    /// <summary>Применять форму к значкам Windows (ярлыки, папки, корзина) — ЭКСПЕРИМЕНТАЛЬНО, с резервной копией и откатом.</summary>
+    public bool ApplySystemWide { get; set; }
 }
 
 public sealed class ThemeDefinition
@@ -121,6 +144,7 @@ public sealed class ThemeDefinition
     /// <summary>Значок кнопки «Пуск» в доке — собственный символ, не логотип Windows.</summary>
     public string StartGlyph { get; set; } = "✦";
     public SystemProfile System { get; set; } = new();
+    public IconStyle Icon { get; set; } = new();
 
     public string DisplayName(bool english) => english ? NameEn : Name;
     public string DisplayDescription(bool english) => english && DescriptionEn.Length > 0 ? DescriptionEn : Description;
@@ -134,6 +158,40 @@ public sealed class ThemeDefinition
     };
 
     public ThemeDefinition Clone() => JsonSerializer.Deserialize<ThemeDefinition>(JsonSerializer.Serialize(this, JsonOptions), JsonOptions)!;
+    /// <summary>Чинит некорректные цвета/размеры/непрозрачность, чтобы тема не делала окно нечитаемым.</summary>
+    public void Sanitize()
+    {
+        Palette ??= new(); Fonts ??= new(); Shape ??= new(); Effects ??= new(); System ??= new(); Icon ??= new();
+        string Fix(string? hex, string def) => Argb.TryParse(hex, out _) ? hex! : def;
+        Palette.Background = Fix(Palette.Background, Dark ? "#FF1E1E22" : "#FFFFFFFF");
+        Palette.Background2 = Fix(Palette.Background2, Dark ? "#FF2A2A30" : "#FFF0F0F4");
+        Palette.Surface = Fix(Palette.Surface, Dark ? "#14FFFFFF" : "#0C000000");
+        Palette.SurfaceHover = Fix(Palette.SurfaceHover, Dark ? "#26FFFFFF" : "#18000000");
+        Palette.Foreground = Fix(Palette.Foreground, Dark ? "#FFF4F4F6" : "#FF1A1A1E");
+        Palette.ForegroundDim = Fix(Palette.ForegroundDim, Dark ? "#B3F4F4F6" : "#B31A1A1E");
+        Palette.Accent = Fix(Palette.Accent, "#FF5AA9FF");
+        Palette.Accent2 = Fix(Palette.Accent2, "#FF9B7BFF");
+        Palette.AccentForeground = Fix(Palette.AccentForeground, "#FFFFFFFF");
+        Palette.Border = Fix(Palette.Border, Dark ? "#1FFFFFFF" : "#1F000000");
+        Palette.Glow = Fix(Palette.Glow, "#005AA9FF");
+        if (!double.IsFinite(Palette.BackgroundOpacity)) Palette.BackgroundOpacity = 0.7;
+        Palette.BackgroundOpacity = Math.Clamp(Palette.BackgroundOpacity, 0.35, 1.0);
+        // гарантируем читаемый текст на фоне (на случай кривой пользовательской темы)
+        var bg = Argb.Parse(Palette.Background);
+        Palette.Foreground = Argb.Readable(Argb.Parse(Palette.Foreground), bg, 3.2).ToHex();
+        if (string.IsNullOrWhiteSpace(Fonts.Ui)) Fonts.Ui = "Inter";
+        if (string.IsNullOrWhiteSpace(Fonts.Title)) Fonts.Title = Fonts.Ui;
+        Fonts.BaseSize = Math.Clamp(Fonts.BaseSize <= 0 ? 14 : Fonts.BaseSize, 10, 28);
+        Fonts.TitleSize = Math.Clamp(Fonts.TitleSize <= 0 ? 22 : Fonts.TitleSize, 12, 56);
+        Fonts.SearchSize = Math.Clamp(Fonts.SearchSize <= 0 ? 22 : Fonts.SearchSize, 12, 48);
+        Shape.Radius = Math.Clamp(Shape.Radius, 0, 40);
+        Shape.TileRadius = Math.Clamp(Shape.TileRadius, 0, 40);
+        Shape.BorderThickness = Math.Clamp(Shape.BorderThickness, 0, 6);
+        Shape.TileSize = Math.Clamp(Shape.TileSize <= 0 ? 96 : Shape.TileSize, 48, 220);
+        Icon.Padding = Math.Clamp(double.IsFinite(Icon.Padding) ? Icon.Padding : 0.18, 0, 0.4);
+        if (string.IsNullOrWhiteSpace(Id)) Id = "custom";
+    }
+
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
     public static ThemeDefinition? FromJson(string json)
     {

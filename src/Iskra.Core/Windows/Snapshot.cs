@@ -38,6 +38,14 @@ public sealed class WallpaperOriginal
     public bool SlideshowShuffle { get; set; }
 }
 
+/// <summary>Резервная копия исходного значка ярлыка (.lnk), чтобы вернуть его при откате.</summary>
+public sealed class ShortcutIconBackup
+{
+    public string LnkPath { get; set; } = "";
+    /// <summary>Исходный IconLocation в формате "путь,индекс" ("" — не задан, брался значок цели).</summary>
+    public string OriginalIconLocation { get; set; } = "";
+}
+
 /// <summary>Снимок «как было» до первого применения темы к Windows. Каждое значение записывается один раз.</summary>
 public sealed class SystemSnapshot
 {
@@ -56,6 +64,8 @@ public sealed class SystemSnapshot
     public bool IconSpacingTouched { get; set; }
     public bool ContextMenuTouched { get; set; }
     public bool HklmTouched { get; set; }
+    public bool ShellIconsTouched { get; set; }
+    public List<ShortcutIconBackup> Shortcuts { get; set; } = new();
     public string? RestorePointResult { get; set; }
 
     public bool Contains(RegHive hive, string key, string name)
@@ -64,7 +74,7 @@ public sealed class SystemSnapshot
         return Registry.Any(r => r.Id == id);
     }
 
-    public bool IsEmpty => Registry.Count == 0 && Wallpaper == null && !LockScreenTouched && TaskbarAutoHide == null;
+    public bool IsEmpty => Registry.Count == 0 && Wallpaper == null && !LockScreenTouched && TaskbarAutoHide == null && Shortcuts.Count == 0;
 
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -153,6 +163,17 @@ public static class RestoreScriptGenerator
             sb.AppendLine("Write-Host 'Экран блокировки: откройте Параметры → Персонализация → Экран блокировки, если картинка не вернулась сама.'");
             if (appExePath != null) sb.AppendLine($"if (Test-Path {Ps(appExePath)}) {{ Start-Process {Ps(appExePath)} -ArgumentList '--restore-lockscreen' -Wait }}");
         }
+        if (s.Shortcuts.Count > 0)
+        {
+            sb.AppendLine("# --- Возврат значков ярлыков ---");
+            sb.AppendLine("$wsh = New-Object -ComObject WScript.Shell");
+            foreach (var b in s.Shortcuts)
+            {
+                sb.AppendLine($"try {{ if (Test-Path {Ps(b.LnkPath)}) {{ $l = $wsh.CreateShortcut({Ps(b.LnkPath)}); $l.IconLocation = {Ps(string.IsNullOrEmpty(b.OriginalIconLocation) ? ",0" : b.OriginalIconLocation)}; $l.Save() }} }} catch {{ Write-Warning $_ }}");
+            }
+        }
+        if (s.ShellIconsTouched || s.Shortcuts.Count > 0)
+            sb.AppendLine("Add-Type -Namespace IskraIco -Name N -MemberDefinition '[DllImport(\"shell32.dll\")] public static extern void SHChangeNotify(uint e, uint f, System.IntPtr a, System.IntPtr b);'; [IskraIco.N]::SHChangeNotify(0x08000000,0,[IntPtr]::Zero,[IntPtr]::Zero)");
         if (s.ContextMenuTouched)
             sb.AppendLine("Write-Host 'Контекстное меню вернётся после перезапуска Проводника или повторного входа.'");
         sb.AppendLine("Write-Host 'Готово. Если что-то не обновилось, выйдите из системы и войдите снова.'");

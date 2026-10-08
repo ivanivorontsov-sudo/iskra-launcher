@@ -49,6 +49,10 @@ public sealed class AppSettings
     public bool ShowRecent { get; set; } = true;
     public bool FontSubstitutionPendingConfirm { get; set; }
     public DateTime? FontSubstitutionAppliedUtc { get; set; }
+    // --- Необязательные глубокие интеграции (ВЫКЛ по умолчанию, ставятся только по согласию, полностью обратимы) ---
+    public bool WindhawkIntegrationEnabled { get; set; }
+    public bool MsStylesIntegrationEnabled { get; set; }
+    public bool ShapedIconsSystemWide { get; set; }
 
     public static readonly Dictionary<string, (string Name, string Url)> WebEngines = new()
     {
@@ -79,8 +83,48 @@ public sealed class AppSettings
     public static AppSettings FromJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return new AppSettings();
-        try { return JsonSerializer.Deserialize<AppSettings>(json, Json) ?? new AppSettings(); }
+        try { var s = JsonSerializer.Deserialize<AppSettings>(json, Json) ?? new AppSettings(); s.Sanitize(); return s; }
         catch (JsonException) { return new AppSettings(); }
+    }
+
+    /// <summary>Самовосстановление: читаем файл, при порче — .bak, иначе значения по умолчанию. Всегда валидируем.</summary>
+    public static AppSettings LoadOrHeal(string path, out bool healed)
+    {
+        healed = false;
+        string? ReadSafe(string f) { try { return File.Exists(f) ? File.ReadAllText(f) : null; } catch { return null; } }
+        var main = ReadSafe(path);
+        if (main != null)
+        {
+            try { var s = JsonSerializer.Deserialize<AppSettings>(main, Json); if (s != null) { s.Sanitize(); return s; } } catch { }
+        }
+        var bak = ReadSafe(path + ".bak");
+        if (bak != null)
+        {
+            try { var s = JsonSerializer.Deserialize<AppSettings>(bak, Json); if (s != null) { healed = true; s.Sanitize(); return s; } } catch { }
+        }
+        healed = main != null; // был файл, но испорчен
+        return new AppSettings();
+    }
+
+    /// <summary>Чинит заведомо некорректные значения, чтобы приложение не падало и не «белело».</summary>
+    public void Sanitize()
+    {
+        Language = Language == "en" ? "en" : "ru";
+        SoundVolume = Math.Clamp(double.IsFinite(SoundVolume) ? SoundVolume : 0.6, 0, 1);
+        FileSearchMaxDepth = Math.Clamp(FileSearchMaxDepth <= 0 ? 5 : FileSearchMaxDepth, 1, 12);
+        FileSearchFolders ??= new();
+        Pinned ??= new();
+        CustomThemes ??= new();
+        SystemOptions ??= new();
+        if (string.IsNullOrWhiteSpace(Hotkey)) Hotkey = "Alt+Space";
+        if (string.IsNullOrWhiteSpace(StartScreenHotkey)) StartScreenHotkey = "Alt+Shift+Space";
+        // чиним пользовательские темы
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CustomThemes.RemoveAll(t => t == null);
+        foreach (var t in CustomThemes) t.Sanitize();
+        CustomThemes.RemoveAll(t => string.IsNullOrWhiteSpace(t.Id) || !seen.Add(t.Id));
+        // тема должна существовать
+        if (AllThemes().All(t => t.Id != ThemeId)) ThemeId = BuiltInThemes.All[0].Id;
     }
 
     /// <summary>Атомарная запись: во временный файл, затем замена.</summary>

@@ -57,7 +57,7 @@ internal sealed class StartScreenWindow : Window
             var img = new Image { Source = new System.Windows.Media.Imaging.BitmapImage(new Uri(wall)), Stretch = Stretch.UniformToFill };
             bg.Children.Add(img);
         }
-        catch { bg.Background = T.WindowBackground(reduce); }
+        catch { bg.Background = T.WindowOpaque; }
         bg.Children.Add(new BackgroundFxControl(_state));
         bg.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb((byte)(theme.Dark ? 150 : 90), 0, 0, 0)) });
 

@@ -67,26 +67,27 @@ internal sealed class ResultRow : Border
 
     private FrameworkElement BuildIcon(SearchItem item, Theming t)
     {
-        // Иконки приложений/файлов подгружаем лениво; для команд/настроек — глиф в кружке акцента.
+        const double sz = 36;
+        // Команды/настройки/веб/калькулятор/темы — глиф в форме темы.
         if (item.Kind is ItemKind.Command or ItemKind.Setting or ItemKind.Web or ItemKind.Calculator or ItemKind.Theme || item.Glyph != null)
-        {
-            var circle = new Border
-            {
-                Width = 34, Height = 34, CornerRadius = new CornerRadius(t.Theme.Shape.TileRadius + 2),
-                Background = new SolidColorBrush(Color.FromArgb(40, t.Accent.Color.R, t.Accent.Color.G, t.Accent.Color.B)),
-                Child = UiKit.Glyph(item.Glyph ?? "\uE700", 17, t.Accent),
-            };
-            return circle;
-        }
-        var img = new Image { Width = 30, Height = 30, VerticalAlignment = VerticalAlignment.Center };
+            return Host(ShapedIcon.Build(t, sz, null, item.Glyph ?? "\uE700"));
+
+        // Приложения/файлы: место под значок, грузим лениво и помещаем в форму темы.
+        var host = new Grid { Width = sz, Height = sz, VerticalAlignment = VerticalAlignment.Center };
+        host.Children.Add(ShapedIcon.Build(t, sz, null, "\uE737")); // плейсхолдер в форме
         var path = item.FilePath ?? item.Target;
         System.Threading.Tasks.Task.Run(() =>
         {
             var bmp = IconLoader.Load(path);
-            if (bmp != null) Dispatcher.BeginInvoke(() => img.Source = bmp);
-            else Dispatcher.BeginInvoke(() => { if (Child is Grid g) { g.Children.Remove(img); var b = new Border { Width = 34, Height = 34, CornerRadius = new CornerRadius(8), Background = new SolidColorBrush(Color.FromArgb(40, t.Accent.Color.R, t.Accent.Color.G, t.Accent.Color.B)), Child = UiKit.Glyph("\uE737", 16, t.Accent) }; Grid.SetColumn(b, 0); g.Children.Add(b); } });
+            Dispatcher.BeginInvoke(() =>
+            {
+                host.Children.Clear();
+                host.Children.Add(bmp != null ? ShapedIcon.Build(t, sz, bmp, null) : ShapedIcon.Build(t, sz, null, "\uE737"));
+            });
         });
-        return img;
+        return Host(host);
+
+        static FrameworkElement Host(FrameworkElement fe) { fe.VerticalAlignment = VerticalAlignment.Center; return fe; }
     }
 
     private void FillTitle(TextBlock tb, SearchResult r, Theming t)

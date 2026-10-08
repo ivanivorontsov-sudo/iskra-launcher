@@ -17,6 +17,9 @@ public sealed class SystemApplyOptions
     public bool Taskbar { get; set; } = true;         // выравнивание панели задач
     public bool Dock { get; set; } = true;            // собственная панель задач, если тема её рекомендует
     public bool SystemFontExperimental { get; set; }  // ЭКСПЕРИМЕНТ: системный шрифт через FontSubstitutes (нужны права администратора)
+    public bool WindowMetrics { get; set; } = true;   // ширина полосы прокрутки / высота заголовка / отступ рамки
+    public bool ShellIcons { get; set; }              // значки папок/этот компьютер/корзина (ЭКСПЕРИМЕНТ, по умолчанию выкл.)
+    public bool ShapedShortcutIcons { get; set; }     // перерисовать значки ярлыков рабочего стола/Пуска в форме темы (с бэкапом)
 }
 
 /// <summary>Пути к сгенерированным файлам темы (курсоры, звуки).</summary>
@@ -27,6 +30,8 @@ public sealed class SystemAssets
     /// <summary>Событие звуковой схемы (SystemAsterisk…) → путь к .wav.</summary>
     public Dictionary<string, string> Sounds { get; } = new(StringComparer.OrdinalIgnoreCase);
     public string CursorSchemeName { get; set; } = "Искра";
+    /// <summary>Роль значка (folder, folderOpen, thispc, recycleFull, recycleEmpty) → путь к .ico.</summary>
+    public Dictionary<string, string> IconFiles { get; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -46,6 +51,10 @@ public static class SystemPlan
     public const string ClassicMenuClsid = @"Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}";
     public const string ClassicMenuKey = ClassicMenuClsid + @"\InprocServer32";
     public const string ContentDeliveryKey = @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager";
+    public const string ColorsKey = @"Control Panel\Colors";
+    public const string ShellIconsKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
+    public const string ThisPcIconKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\DefaultIcon";
+    public const string RecycleIconKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\DefaultIcon";
 
     /// <summary>Роли курсоров в HKCU\Control Panel\Cursors.</summary>
     public static readonly string[] CursorRoles =
@@ -94,6 +103,28 @@ public static class SystemPlan
             Add(DesktopKey, "AutoColorization", RegKind.DWord, 0, "colors"); // не подбирать акцент по обоям
         }
 
+        if (o.Colors)
+        {
+            // Классические цвета (HKCU\Control Panel\Colors) — для старых окон/диалогов. Значения "R G B".
+            var accent = Argb.Parse(p.Accent, new Argb(0xFF, 0x5A, 0xA9, 0xFF));
+            bool dark = p.AppsDark;
+            Argb win = dark ? new(0xFF,0x20,0x20,0x24) : new(0xFF,0xFF,0xFF,0xFF);
+            Argb winText = dark ? new(0xFF,0xF0,0xF0,0xF2) : new(0xFF,0x10,0x10,0x12);
+            Argb btnFace = dark ? new(0xFF,0x2B,0x2B,0x30) : new(0xFF,0xF0,0xF0,0xF0);
+            Argb menu = btnFace, menuText = winText;
+            Argb accentText = Argb.Readable(Argb.Parse(p.Accent), accent) ;
+            void Col(string name, Argb c) => Add(ColorsKey, name, RegKind.String, $"{c.R} {c.G} {c.B}", "colors");
+            Col("Window", win); Col("WindowText", winText);
+            Col("Menu", menu); Col("MenuText", menuText);
+            Col("ButtonFace", btnFace); Col("ButtonText", winText);
+            Col("Hilight", accent); Col("HilightText", accentText); Col("HotTrackingColor", accent);
+            Col("GrayText", dark ? new(0xFF,0x80,0x80,0x86) : new(0xFF,0x6D,0x6D,0x6D));
+            Col("ActiveTitle", accent); Col("InactiveTitle", btnFace);
+            Col("TitleText", accentText); Col("InactiveTitleText", winText);
+            Col("ActiveBorder", btnFace); Col("InactiveBorder", btnFace);
+            Col("Background", dark ? new(0xFF,0x0A,0x0A,0x0C) : new(0xFF,0xE8,0xE8,0xEC));
+        }
+
         if (o.Cursors && assets != null && assets.Cursors.Count > 0)
         {
             Add(CursorsKey, "", RegKind.String, assets.CursorSchemeName, "cursors");
@@ -128,6 +159,23 @@ public static class SystemPlan
 
         if (o.Taskbar && p.TaskbarAlignment != TaskbarAlign.Unchanged)
             Add(AdvancedKey, "TaskbarAl", RegKind.DWord, p.TaskbarAlignment == TaskbarAlign.Center ? 1 : 0, "taskbar");
+
+        if (o.WindowMetrics)
+        {
+            string Tw(int px) => (-px * 15).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (p.ScrollbarWidth > 0) { Add(WindowMetricsKey, "ScrollWidth", RegKind.String, Tw(p.ScrollbarWidth), "metrics"); Add(WindowMetricsKey, "ScrollHeight", RegKind.String, Tw(p.ScrollbarWidth), "metrics"); }
+            if (p.TitleBarHeight > 0) { Add(WindowMetricsKey, "CaptionHeight", RegKind.String, Tw(p.TitleBarHeight), "metrics"); Add(WindowMetricsKey, "CaptionWidth", RegKind.String, Tw(p.TitleBarHeight), "metrics"); }
+            if (p.BorderPadding >= 0) Add(WindowMetricsKey, "PaddedBorderWidth", RegKind.String, Tw(p.BorderPadding), "metrics");
+        }
+
+        if (o.ShellIcons && assets != null && assets.IconFiles.Count > 0)
+        {
+            if (assets.IconFiles.TryGetValue("folder", out var f)) Add(ShellIconsKey, "3", RegKind.ExpandString, f + ",0", "shellicons");
+            if (assets.IconFiles.TryGetValue("folderOpen", out var fo)) Add(ShellIconsKey, "4", RegKind.ExpandString, fo + ",0", "shellicons");
+            if (assets.IconFiles.TryGetValue("thispc", out var pc)) Add(ThisPcIconKey, "", RegKind.ExpandString, pc + ",0", "shellicons");
+            if (assets.IconFiles.TryGetValue("recycleEmpty", out var re)) Add(RecycleIconKey, "empty", RegKind.ExpandString, re + ",0", "shellicons");
+            if (assets.IconFiles.TryGetValue("recycleFull", out var rf)) Add(RecycleIconKey, "full", RegKind.ExpandString, rf + ",0", "shellicons");
+        }
 
         return w;
     }

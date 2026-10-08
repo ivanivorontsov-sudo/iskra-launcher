@@ -45,7 +45,7 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ github.ref_name }}"
-          if ($v -match '^v\d') { $v = $v.Substring(1) } else { $v = "1.0.0" }
+          if ($v -match '^v\d') { $v = $v.Substring(1) } else { $v = "1.1.0" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
       - name: Publish (self-contained win-x64)
         run: dotnet publish src/Iskra.App -c Release -r win-x64 --self-contained -o publish /p:Version=${{ steps.ver.outputs.version }}

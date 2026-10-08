@@ -31,7 +31,8 @@ internal static class WindowStyler
         };
         Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
 
-        int backdrop = reduceEffects ? Native.DWMSBT_NONE : theme.Effects.Material switch
+        bool backdropAvailable = BackdropCaps.Available(reduceEffects);
+        int backdrop = !backdropAvailable ? Native.DWMSBT_NONE : theme.Effects.Material switch
         {
             Material.Mica => Native.DWMSBT_MAINWINDOW,
             Material.MicaAlt => Native.DWMSBT_TABBED,

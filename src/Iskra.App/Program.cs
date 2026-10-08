@@ -42,9 +42,21 @@ internal static class Program
             return 0;
         }
 
+        Paths.Init();
+        RunState.Begin();                 // маркер сеанса (для определения аварий)
+        SafeMode.Evaluate();              // Shift при старте или падение в прошлый раз
+
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error("Необработанное исключение", e.ExceptionObject as Exception);
         app.DispatcherUnhandledException += (_, e) => { Log.Error("Исключение UI", e.Exception); e.Handled = true; };
+
+        // Программная отрисовка, если GPU недоступен (Tier 0) или в безопасном режиме — спасает от «чёрного/белого» окна.
+        try
+        {
+            if (SafeMode.Active || (System.Windows.Media.RenderCapability.Tier >> 16) < 1)
+                System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+        }
+        catch { }
 
         // Скрытое окно-приёмник сообщений (для горячих клавиш и трея).
         var messageWindow = new Window
@@ -72,6 +84,7 @@ internal static class Program
 
         app.Run();
         State.Shutdown();
+        RunState.End();
         _mutex.ReleaseMutex();
         return 0;
     }

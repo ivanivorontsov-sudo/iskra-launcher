@@ -6,6 +6,25 @@ namespace Iskra.Core.Themes;
 /// </summary>
 public static class BuiltInThemes
 {
+    // Форма значков по умолчанию для каждой встроенной темы (пользователь может изменить в редакторе).
+    private static readonly Dictionary<string, (IconShape shape, IconFill fill, bool gloss)> IconStyles = new()
+    {
+        ["mica"] = (IconShape.Squircle, IconFill.AccentGradient, true),
+        ["tiles"] = (IconShape.Pixel, IconFill.Solid, false),
+        ["spotlight"] = (IconShape.Circle, IconFill.Glass, true),
+        ["neon"] = (IconShape.Hexagon, IconFill.AccentGradient, true),
+        ["notebook"] = (IconShape.Droplet, IconFill.Solid, false),
+        ["terminal"] = (IconShape.RoundedSquare, IconFill.None, false),
+        ["aurora"] = (IconShape.Blob, IconFill.AccentGradient, true),
+        ["retro"] = (IconShape.Pixel, IconFill.Solid, false),
+        ["minimal"] = (IconShape.Circle, IconFill.None, false),
+        ["space"] = (IconShape.Star, IconFill.AccentGradient, true),
+        ["sunset"] = (IconShape.Droplet, IconFill.AccentGradient, true),
+        ["library"] = (IconShape.Leaf, IconFill.Solid, false),
+        ["sakura"] = (IconShape.Droplet, IconFill.AccentGradient, true),
+    };
+
+
     public static IReadOnlyList<ThemeDefinition> All { get; } = Create();
 
     public static ThemeDefinition Get(string id) => All.FirstOrDefault(t => t.Id == id) ?? All[0];
@@ -230,7 +249,12 @@ public static class BuiltInThemes
 
     private static IReadOnlyList<ThemeDefinition> Mark(ThemeDefinition[] themes)
     {
-        foreach (var t in themes) t.BuiltIn = true;
+        foreach (var t in themes)
+        {
+            t.BuiltIn = true;
+            if (IconStyles.TryGetValue(t.Id, out var st))
+                t.Icon = new IconStyle { Shape = st.shape, Fill = st.fill, Gloss = st.gloss, Shadow = st.fill != IconFill.None, Padding = 0.18 };
+        }
         return themes;
     }
 }

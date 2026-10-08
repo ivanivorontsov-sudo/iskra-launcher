@@ -58,7 +58,11 @@ internal sealed class LauncherWindow : Window
     private void BuildChrome()
     {
         var reduce = _state.ReduceEffects();
+        bool backdrop = BackdropCaps.Available(reduce);
         var theme = _state.Settings.CurrentTheme();
+
+        // Если материал DWM не рисуется — окно должно быть непрозрачным, иначе текст «пропадает» на стекле.
+        Background = backdrop ? Brushes.Transparent : T.WindowOpaque;
 
         _bgLayer = new Grid();
         var bgEffect = new BackgroundFxControl(_state) { IsHitTestVisible = false };
@@ -124,7 +128,7 @@ internal sealed class LauncherWindow : Window
 
         _card = new Border
         {
-            Background = T.WindowBackground(reduce),
+            Background = T.WindowBackground(reduce, backdrop),
             CornerRadius = new CornerRadius(theme.Shape.Radius + 4),
             BorderBrush = T.BorderBrush,
             BorderThickness = new Thickness(theme.Shape.BorderThickness),

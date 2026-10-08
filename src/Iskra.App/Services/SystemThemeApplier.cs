@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Iskra.Core.Themes;
 using Iskra.Core.Windows;
@@ -17,6 +18,7 @@ public sealed record ApplyReport(List<string> Changed, List<string> Skipped, int
 internal sealed class SystemThemeApplier
 {
     public SystemSnapshot Snapshot { get; private set; }
+    private static readonly SemaphoreSlim ApplyGate = new(1, 1);
 
     public SystemThemeApplier()
     {
@@ -58,6 +60,11 @@ internal sealed class SystemThemeApplier
             }
             if (options.Sounds && theme.Sound != SoundPack.None)
                 foreach (var kv in AssetFactory.GenerateSounds(theme)) assets.Sounds[kv.Key] = kv.Value;
+            if (options.ShellIcons)
+            {
+                foreach (var kv in ShapeIconFactory.GenerateShellIcons(theme)) assets.IconFiles[kv.Key] = kv.Value;
+                Snapshot.ShellIconsTouched = true;
+            }
 
             // 2. Реестровые изменения (цвета, звуки, курсоры, значки, контекстное меню, панель задач).
             var plan = SystemPlan.Build(theme.System, options, assets);
@@ -68,6 +75,13 @@ internal sealed class SystemThemeApplier
             if (options.IconSpacing) { changed.Add(L("icons")); Snapshot.IconSpacingTouched = true; }
             if (options.ContextMenu) { changed.Add(L("contextmenu")); Snapshot.ContextMenuTouched = true; }
             if (options.Taskbar && theme.System.TaskbarAlignment != TaskbarAlign.Unchanged) changed.Add(L("taskbar"));
+            if (options.WindowMetrics) changed.Add(L("metrics"));
+            if (options.ShellIcons && assets.IconFiles.Count > 0) { changed.Add(L("shellicons")); ShortcutIconApplier.RefreshIcons(); }
+            if (options.ShapedShortcutIcons)
+            {
+                int n = ShortcutIconApplier.Apply(theme, Snapshot);
+                if (n > 0) changed.Add(L("shortcuticons") + " (" + n + ")");
+            }
 
             // 3. Обои (и слайд-шоу).
             if (options.Wallpaper)
@@ -103,21 +117,48 @@ internal sealed class SystemThemeApplier
                 catch (Exception ex) { Log.Error("Экран блокировки", ex); skipped.Add(L("lockscreen")); }
             }
 
-            // 5. Рамки/материал/углы прочих окон (Проводник и др.) — через внешний «наблюдатель» DWM.
-            if (options.WindowFrames)
-            {
-                DwmWatcher.Instance.Configure(theme, enabled: true);
-                changed.Add(L("windows"));
-            }
-            else DwmWatcher.Instance.Configure(theme, enabled: false);
+            if (options.WindowFrames) changed.Add(L("windows"));
 
             SaveSnapshot();
         });
 
-        // 6. Разослать смену темы Проводнику.
-        ThemeBroadcast.Notify();
+        // 5. Рамки/материал окон (Проводник) — ТОЛЬКО в UI-потоке: DwmWatcher использует DispatcherTimer.
+        //    Раньше это вызывалось из Task.Run и падало, обрывая применение темы на середине (причина «глюков»).
+        RunOnUi(() =>
+        {
+            try { DwmWatcher.Instance.Configure(theme, enabled: options.WindowFrames); } catch (Exception ex) { Log.Error("DWM-наблюдатель", ex); }
+            try { ThemeBroadcast.Notify(); } catch (Exception ex) { Log.Error("Рассылка темы", ex); }
+            try { BackdropCaps.Invalidate(); } catch { }
+        });
 
         return new ApplyReport(changed, skipped, 0);
+    }
+
+    private static void RunOnUi(Action a)
+    {
+        var app = System.Windows.Application.Current;
+        if (app == null) { try { a(); } catch { } return; }
+        if (app.Dispatcher.CheckAccess()) a();
+        else app.Dispatcher.Invoke(a);
+    }
+
+    /// <summary>Применение темы с сериализацией (без гонок) и защитой по времени, чтобы ничего не «подвисало» навсегда.</summary>
+    public async Task<ApplyReport> ApplySerializedAsync(ThemeDefinition theme, Iskra.Core.Windows.SystemApplyOptions options, (int w, int h) screen, int timeoutMs = 25000)
+    {
+        if (!await ApplyGate.WaitAsync(timeoutMs))
+        {
+            Log.Warn("Применение темы занято — пропуск повторного вызова.");
+            return new ApplyReport(new(), new(), 0);
+        }
+        try
+        {
+            var task = ApplyAsync(theme, options, screen);
+            var done = await Task.WhenAny(task, Task.Delay(timeoutMs));
+            if (done != task) { Log.Warn("Применение темы превысило лимит времени; продолжит в фоне."); return new ApplyReport(new(), new(), 0); }
+            return await task;
+        }
+        catch (Exception ex) { Log.Error("Применение темы", ex); return new ApplyReport(new(), new(), 1); }
+        finally { ApplyGate.Release(); }
     }
 
     private void CaptureWallpaperOriginal()
@@ -143,6 +184,8 @@ internal sealed class SystemThemeApplier
             if (Snapshot.CursorsTouched) WallpaperManager.ReloadCursors();
             if (Snapshot.LockScreenTouched && !string.IsNullOrEmpty(Snapshot.LockScreenBackup) && File.Exists(Snapshot.LockScreenBackup))
                 LockScreenManager.TrySet(Snapshot.LockScreenBackup);
+            if (Snapshot.Shortcuts.Count > 0) ShortcutIconApplier.Restore(Snapshot);
+            if (Snapshot.ShellIconsTouched) ShortcutIconApplier.RefreshIcons();
         }
         catch (Exception ex) { Log.Error("Откат ресурсов", ex); errors++; }
         DwmWatcher.Instance.Stop();
@@ -166,6 +209,9 @@ internal sealed class SystemThemeApplier
         "wallpaper" => Iskra.Core.Loc.L.English ? "wallpaper" : "обои",
         "lockscreen" => Iskra.Core.Loc.L.English ? "lock screen" : "экран блокировки",
         "windows" => Iskra.Core.Loc.L.English ? "window frames" : "рамки окон",
+        "metrics" => Iskra.Core.Loc.L.English ? "window metrics" : "метрики окон",
+        "shellicons" => Iskra.Core.Loc.L.English ? "folder/PC/bin icons" : "значки папок/ПК/корзины",
+        "shortcuticons" => Iskra.Core.Loc.L.English ? "shortcut icons" : "значки ярлыков",
         _ => cat,
     };
 }

@@ -51,10 +51,25 @@ internal static class AppIndexer
         return items;
     }
 
+    private static readonly EnumerationOptions EnumOpts = new()
+    {
+        RecurseSubdirectories = true,
+        IgnoreInaccessible = true,            // пропускаем защищённые подпапки меню «Пуск», а не падаем
+        AttributesToSkip = FileAttributes.Hidden | FileAttributes.System,
+        MaxRecursionDepth = 6,
+    };
+
     private static IEnumerable<string> SafeEnumerate(string dir, string pattern)
     {
-        try { return Directory.EnumerateFiles(dir, pattern, SearchOption.AllDirectories); }
-        catch { return Enumerable.Empty<string>(); }
+        // Ленивая перечислялка .NET бросает UnauthorizedAccessException во время MoveNext, а не при вызове,
+        // поэтому обязателен IgnoreInaccessible; дополнительно глушим на всякий случай.
+        List<string> acc = new();
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(dir, pattern, EnumOpts)) acc.Add(f);
+        }
+        catch (Exception ex) { Log.Warn($"Перечисление {dir}: {ex.Message}"); }
+        return acc;
     }
 
     private static string Loc(string k) => Iskra.Core.Loc.L.T(k);
