@@ -22,6 +22,10 @@ internal sealed class RegistryApplier
         foreach (var w in writes) ApplyOne(w);
     }
 
+    /// <summary>Снять исходное значение в снимок, НИЧЕГО не записывая (для живого применения через SPI).</summary>
+    public void CaptureValue(RegHive hive, string key, string name, string category)
+        => CaptureOriginal(new RegWrite(hive, key, name, RegKind.Binary, null, category));
+
     public void ApplyOne(RegWrite w)
     {
         if (!RegistryGuard.IsAllowed(w))

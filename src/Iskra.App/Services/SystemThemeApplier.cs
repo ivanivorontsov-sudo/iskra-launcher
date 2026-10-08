@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Iskra.Core.Themes;
 using Iskra.Core.Windows;
+using Microsoft.Win32;
 
 namespace Iskra.App.Services;
 
@@ -174,10 +175,43 @@ internal sealed class SystemThemeApplier
         if (backup != null) Snapshot.LockScreenBackup = backup;
     }
 
-    /// <summary>Полный откат: реестр из снимка + обои/курсоры/панель задач + остановка наблюдателя DWM.</summary>
-    public int Restore(bool includeHklm = true)
+    /// <summary>Итог отката: число ошибок, нужны ли были права администратора, получили ли мы их, очищен ли снимок.</summary>
+    public sealed record RestoreOutcome(int Errors, bool NeededHklm, bool Elevated, bool Cleared);
+
+    /// <summary>
+    /// Главная точка отката «Вернуть Windows как было». Если затрагивается HKLM (шрифт / экран блокировки) и у нас
+    /// нет прав администратора — поднимаем отдельный процесс с UAC, который доводит откат до конца. При отказе от UAC
+    /// снимок НЕ удаляется, чтобы можно было повторить. Также чинит повреждённую регистрацию Segoe UI даже без снимка.
+    /// </summary>
+    public RestoreOutcome RestoreAll()
+    {
+        bool needHklm = Snapshot.HklmTouched || Snapshot.Registry.Any(r => r.Hive == RegHive.LocalMachine) || FontRepairNeeded();
+        bool admin = AppInfo.IsAdmin();
+        if (needHklm && !admin)
+        {
+            bool ok = RunElevatedRestore();
+            if (!ok)
+            {
+                int e1 = Restore(includeHklm: false, clearOnSuccess: false); // HKCU вернём, снимок сохраним для повтора
+                return new RestoreOutcome(e1, true, false, false);
+            }
+            Snapshot = LoadSnapshot(); // повышенный процесс уже всё сделал и, при успехе, очистил снимок
+            return new RestoreOutcome(0, true, true, Snapshot.IsEmpty);
+        }
+        int errors = Restore(includeHklm: admin || !needHklm, clearOnSuccess: true);
+        return new RestoreOutcome(errors, needHklm, admin, Snapshot.IsEmpty);
+    }
+
+    /// <summary>
+    /// Низкоуровневый откат: реестр из снимка + обои/курсоры/значки/шрифты. В отличие от старой версии:
+    /// (1) снимок очищается ТОЛЬКО при успехе; (2) чинится регистрация Segoe UI (работает и с пустым снимком);
+    /// (3) шрифты перерегистрируются и рассылается WM_FONTCHANGE / SPI_SETNONCLIENTMETRICS; (4) перезапуск Проводника.
+    /// </summary>
+    public int Restore(bool includeHklm = true, bool clearOnSuccess = true)
     {
         int errors = RegistryApplier.Restore(Snapshot, includeHklm);
+        bool fontTouched = Snapshot.Registry.Any(r => r.Category == "font")
+                           || Snapshot.Registry.Any(r => r.Category == "metrics" || r.Category == "icons");
         try
         {
             if (Snapshot.Wallpaper != null) WallpaperManager.Restore(Snapshot.Wallpaper);
@@ -188,12 +222,93 @@ internal sealed class SystemThemeApplier
             if (Snapshot.ShellIconsTouched) ShortcutIconApplier.RefreshIcons();
         }
         catch (Exception ex) { Log.Error("Откат ресурсов", ex); errors++; }
+
+        // Починка шрифтов: гарантируем штатный Segoe UI и убираем подстановку, даже если снимок пуст/повреждён.
+        if (includeHklm && AppInfo.IsAdmin() && FontRepairNeeded())
+        {
+            try
+            {
+                var repair = new RegistryApplier(new SystemSnapshot()); // не засоряем основной снимок
+                repair.Apply(Iskra.Core.Windows.FontPlan.BuildFontRepair());
+                FontApply.ReregisterSegoe();
+                fontTouched = true;
+            }
+            catch (Exception ex) { Log.Error("Починка шрифтов", ex); errors++; }
+        }
+
+        FontApply.PushNonClientFromRegistry(); // живой возврат заголовков/меню/значков из реестра
         DwmWatcher.Instance.Stop();
         ThemeBroadcast.Notify();
-        // Снимок очищаем: Искра больше ничего не держит.
-        Snapshot = new SystemSnapshot();
-        try { if (File.Exists(Paths.Snapshot)) File.Delete(Paths.Snapshot); } catch { }
+        FontApply.Broadcast();
+
+        bool success = errors == 0;
+        if (clearOnSuccess && success)
+        {
+            Snapshot = new SystemSnapshot();
+            try { if (File.Exists(Paths.Snapshot)) File.Delete(Paths.Snapshot); } catch { }
+            try { if (File.Exists(Paths.Snapshot + ".bak")) File.Delete(Paths.Snapshot + ".bak"); } catch { }
+        }
+        else if (!success) { SaveSnapshot(); } // сохраняем, чтобы можно было повторить откат
+
+        bool desktopNeedsExplorer = fontTouched || Snapshot.ContextMenuTouched || Snapshot.ShellIconsTouched;
+        if (desktopNeedsExplorer) ExplorerRestarter.Restart();
         return errors;
+    }
+
+    /// <summary>true, если по реестру видно, что базовый UI-шрифт подменён или семейство Segoe UI повреждено.</summary>
+    public static bool FontRepairNeeded()
+    {
+        try
+        {
+            using var subs = Registry.LocalMachine.OpenSubKey(Iskra.Core.Windows.FontPlan.FontSubstitutesKey);
+            var seg = subs?.GetValue("Segoe UI") as string;
+            using var fonts = Registry.LocalMachine.OpenSubKey(Iskra.Core.Windows.FontPlan.FontsKey);
+            var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            if (fonts != null)
+                foreach (var n in Iskra.Core.Windows.FontPlan.SegoeNamesThatMayBeBlanked) dict[n] = fonts.GetValue(n) as string;
+            return Iskra.Core.Windows.FontPlan.LooksBroken(seg, dict);
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Поднимает скрытый повышенный процесс Искры, который доводит откат (включая HKLM и починку шрифтов) до конца.</summary>
+    private static bool RunElevatedRestore()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = AppInfo.ExePath,
+                Arguments = "--restore-silent",
+                UseShellExecute = true,
+                Verb = "runas",
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+            };
+            var p = System.Diagnostics.Process.Start(psi);
+            p?.WaitForExit(120000);
+            return p != null && p.ExitCode == 0;
+        }
+        catch (System.ComponentModel.Win32Exception) { return false; } // пользователь отменил UAC
+        catch (Exception ex) { Log.Error("Повышение для отката", ex); return false; }
+    }
+
+    /// <summary>
+    /// Применяет раздел «Шрифты» (независимо от темы). Заголовки/меню/значки/сообщения — живым SPI (без перезагрузки);
+    /// базовый UI-шрифт (подстановка Segoe UI) — отдельно, через повышение. Перед SPI снимаем исходные LOGFONT в снимок.
+    /// </summary>
+    public bool ApplyFonts(Iskra.Core.Settings.FontSettings f)
+    {
+        if (f == null || !f.Enabled) return false;
+        var applier = new RegistryApplier(Snapshot);
+        foreach (var n in new[] { "CaptionFont", "SmCaptionFont", "MenuFont", "MessageFont", "StatusFont", "IconFont" })
+            applier.CaptureValue(RegHive.CurrentUser, Iskra.Core.Windows.FontPlan.WindowMetricsKey, n, "metrics");
+        bool any = FontApply.ApplyNonClient(f, f.SizePt);
+        if (any)
+        {
+            SaveSnapshot();
+            ExplorerRestarter.Restart(); // чтобы рабочий стол и панель задач перечитали шрифты
+        }
+        return any;
     }
 
     public bool HasSnapshot => !Snapshot.IsEmpty;

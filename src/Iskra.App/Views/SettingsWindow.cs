@@ -32,6 +32,7 @@ internal sealed partial class SettingsWindow : Window
             ["themes"] = BuildThemesPage,
             ["editor"] = BuildEditorPage,
             ["windows"] = BuildWindowsPage,
+            ["fonts"] = BuildFontsPage,
             ["start"] = BuildStartPage,
             ["search"] = BuildSearchPage,
             ["keys"] = BuildKeysPage,
@@ -63,7 +64,7 @@ internal sealed partial class SettingsWindow : Window
         _nav = new ListBox { BorderThickness = new Thickness(0), Background = new SolidColorBrush(T.Background2), Padding = new Thickness(8, 16, 8, 8) };
         var navItems = new (string key, string glyph)[]
         {
-            ("themes", "\uE790"), ("editor", "\uE70F"), ("windows", "\uE770"), ("start", "\uE71D"),
+            ("themes", "\uE790"), ("editor", "\uE70F"), ("windows", "\uE770"), ("fonts", "\uE8D2"), ("start", "\uE71D"),
             ("search", "\uE721"), ("keys", "\uE765"), ("effects", "\uE9E9"), ("general", "\uE713"), ("about", "\uE946"),
         };
         foreach (var (key, glyph) in navItems)

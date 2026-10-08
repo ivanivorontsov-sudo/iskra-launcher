@@ -121,6 +121,12 @@ public static class RestoreScriptGenerator
             sb.AppendLine("$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)");
             sb.AppendLine("if ($isAdmin) {");
             foreach (var r in hklm) EmitRestore(sb, r, "  ");
+            // Починка семейства Segoe UI и удаление подстановки — работает даже если в снимке чего-то не хватает.
+            sb.AppendLine("  # Возврат штатной регистрации Segoe UI и удаление подстановки базового шрифта");
+            foreach (var (name, file) in FontPlan.SegoeDefaults)
+                sb.AppendLine($"  SetV 'HKLM' {Ps(FontPlan.FontsKey)} {Ps(name)} {Ps(file)} $K::String");
+            foreach (var sub in FontPlan.SubstituteNames)
+                sb.AppendLine($"  DelV 'HKLM' {Ps(FontPlan.FontSubstitutesKey)} {Ps(sub)}");
             sb.AppendLine("  Write-Host 'Системные настройки (шрифт / экран блокировки) возвращены.'");
             sb.AppendLine("} elseif (-not $HklmOnly) {");
             sb.AppendLine("  Write-Host 'Запрашиваю права администратора для системной части...'");
@@ -144,6 +150,7 @@ public static class RestoreScriptGenerator
         sb.AppendLine("[DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, UIntPtr w, string l, uint f, uint t, out UIntPtr r);");
         sb.AppendLine("[StructLayout(LayoutKind.Sequential)] public struct APPBARDATA { public int cbSize; public IntPtr hWnd; public uint uCallbackMessage; public uint uEdge; public int left, top, right, bottom; public IntPtr lParam; }");
         sb.AppendLine("[DllImport(\"shell32.dll\")] public static extern UIntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);");
+        sb.AppendLine("[DllImport(\"gdi32.dll\", CharSet = CharSet.Unicode)] public static extern int AddFontResource(string path);");
         sb.AppendLine("'@");
         if (s.Wallpaper != null && s.Wallpaper.Paths.Count > 0 && !string.IsNullOrEmpty(s.Wallpaper.Paths[0]))
         {
@@ -156,7 +163,7 @@ public static class RestoreScriptGenerator
             sb.AppendLine($"$abd.lParam = [IntPtr]{(ah ? 1 : 2)}; [IskraRestore.Native]::SHAppBarMessage(10, [ref]$abd) | Out-Null  # автоскрытие панели задач");
         }
         sb.AppendLine("$r = [UIntPtr]::Zero");
-        sb.AppendLine("foreach ($area in @('ImmersiveColorSet', 'WindowsThemeElement', 'Environment')) { [IskraRestore.Native]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, $area, 2, 3000, [ref]$r) | Out-Null }");
+        sb.AppendLine("foreach ($area in @('ImmersiveColorSet', 'WindowsThemeElement', 'Environment', 'Fonts', 'WindowMetrics')) { [IskraRestore.Native]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, $area, 2, 3000, [ref]$r) | Out-Null }");
         if (s.LockScreenTouched && !string.IsNullOrEmpty(s.LockScreenBackup))
         {
             sb.AppendLine($"# Экран блокировки: исходная картинка сохранена в {s.LockScreenBackup}");
@@ -176,7 +183,17 @@ public static class RestoreScriptGenerator
             sb.AppendLine("Add-Type -Namespace IskraIco -Name N -MemberDefinition '[DllImport(\"shell32.dll\")] public static extern void SHChangeNotify(uint e, uint f, System.IntPtr a, System.IntPtr b);'; [IskraIco.N]::SHChangeNotify(0x08000000,0,[IntPtr]::Zero,[IntPtr]::Zero)");
         if (s.ContextMenuTouched)
             sb.AppendLine("Write-Host 'Контекстное меню вернётся после перезапуска Проводника или повторного входа.'");
-        sb.AppendLine("Write-Host 'Готово. Если что-то не обновилось, выйдите из системы и войдите снова.'");
+        if (s.Registry.Any(r => r.Category == "font" || r.Category == "metrics") || s.HklmTouched)
+        {
+            sb.AppendLine("# Перерегистрация Segoe UI и уведомление о смене шрифта");
+            sb.AppendLine("$wf = Join-Path $env:WINDIR 'Fonts'");
+            foreach (var (_, file) in FontPlan.SegoeDefaults)
+                sb.AppendLine($"$p = Join-Path $wf {Ps(file)}; if (Test-Path $p) {{ [IskraRestore.Native]::AddFontResource($p) | Out-Null }}");
+            sb.AppendLine("[IskraRestore.Native]::SendMessageTimeout([IntPtr]0xffff, 0x1D, [UIntPtr]::Zero, '', 2, 3000, [ref]$r) | Out-Null  # WM_FONTCHANGE");
+            sb.AppendLine("# Перезапуск Проводника, чтобы рабочий стол и панель задач перечитали шрифты");
+            sb.AppendLine("try { Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 1200; if (-not (Get-Process -Name explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe } } catch {}");
+        }
+        sb.AppendLine("Write-Host 'Готово. Если шрифт в части приложений остался прежним — перезапустите их или выйдите из системы и войдите снова.'");
         return sb.ToString();
     }
 

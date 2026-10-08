@@ -77,11 +77,14 @@ internal sealed class SystemFontApplier
 
             var snapshot = SystemThemeApplier.LoadSnapshot();
             var applier = new RegistryApplier(snapshot);
-            applier.Apply(SystemPlan.BuildSystemFont(familyName, fontFileName));
+            // Не обнуляем штатные записи Segoe UI (это и ломало откат) — только прописываем файл семейства и подстановку.
+            applier.Apply(FontPlan.BuildSystemFontSubstitute(familyName, fontFileName));
             snapshot.HklmTouched = true;
             Iskra.Core.Settings.AppSettings.SaveAtomic(Paths.Snapshot, snapshot.ToJson());
             File.WriteAllText(Paths.RestoreScript, RestoreScriptGenerator.Generate(snapshot, AppInfo.ExePath), new System.Text.UTF8Encoding(true));
+            FontApply.ReregisterSegoe();
             ThemeBroadcast.Notify();
+            FontApply.Broadcast();
             return 0;
         }
         catch (Exception ex) { Log.Error("RunElevatedApply", ex); return 1; }
@@ -89,16 +92,8 @@ internal sealed class SystemFontApplier
 
     public static int RunElevatedRevert()
     {
-        try
-        {
-            var snapshot = SystemThemeApplier.LoadSnapshot();
-            RegistryApplier.Restore(snapshot, includeHklm: true);
-            // Удаляем из снимка записи шрифта, чтобы не откатывать их повторно.
-            snapshot.Registry.RemoveAll(r => r.Category == "font" || r.Key.Contains("Fonts", StringComparison.OrdinalIgnoreCase));
-            Iskra.Core.Settings.AppSettings.SaveAtomic(Paths.Snapshot, snapshot.ToJson());
-            ThemeBroadcast.Notify();
-            return 0;
-        }
+        // Полный, надёжный откат (снимок + починка Segoe UI + перерегистрация + рассылка + перезапуск Проводника).
+        try { return new SystemThemeApplier().Restore(includeHklm: true, clearOnSuccess: true); }
         catch (Exception ex) { Log.Error("RunElevatedRevert", ex); return 1; }
     }
 }

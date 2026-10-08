@@ -184,9 +184,19 @@ internal sealed partial class SettingsWindow
 
     private void RestoreWindows()
     {
-        if (!_state.System.HasSnapshot) { _winStatus.Text = L.T("win.restoreNone"); return; }
-        int errors = _state.RestoreWindows();
-        _winStatus.Text = L.T("win.restoreDone") + (errors > 0 ? $" ({errors})" : "");
+        if (!_state.System.HasSnapshot && !SystemThemeApplier.FontRepairNeeded()) { _winStatus.Text = L.T("win.restoreNone"); return; }
+        _winStatus.Text = L.T("win.restoring");
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            var outcome = _state.RestoreWindowsDetailed();
+            Dispatcher.Invoke(() =>
+            {
+                if (outcome.NeededHklm && !outcome.Elevated)
+                    _winStatus.Text = L.T("win.restoreNeedsAdmin");
+                else
+                    _winStatus.Text = L.T("win.restoreDone") + (outcome.Errors > 0 ? $" ({outcome.Errors})" : "");
+            });
+        });
     }
 
     private void ApplySystemFont()

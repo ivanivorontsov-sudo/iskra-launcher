@@ -235,9 +235,28 @@ internal sealed class AppState
 
     public int RestoreWindows()
     {
-        var e = System.Restore();
+        var outcome = System.RestoreAll();
         DwmWatcher.Instance.Stop();
-        return e;
+        return outcome.Errors;
+    }
+
+    public SystemThemeApplier.RestoreOutcome RestoreWindowsDetailed()
+    {
+        var outcome = System.RestoreAll();
+        DwmWatcher.Instance.Stop();
+        return outcome;
+    }
+
+    /// <summary>Применяет раздел «Шрифты» (вживую). Для базового шрифта (подстановка) нужны права администратора.</summary>
+    public void ApplyFonts()
+    {
+        try
+        {
+            System.ApplyFonts(Settings.Fonts);
+            if (Settings.Fonts.Enabled && Settings.Fonts.ReplaceSystemWide && !string.IsNullOrWhiteSpace(Settings.Fonts.SystemFont))
+                new SystemFontApplier(System).ApplyElevated(Settings.Fonts.SystemFont!);
+        }
+        catch (Exception ex) { Log.Error("ApplyFonts", ex); }
     }
 
     private void HandleIskraCommand(BuiltinItems.Cmd c)

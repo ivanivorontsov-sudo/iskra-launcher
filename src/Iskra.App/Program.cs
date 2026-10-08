@@ -29,8 +29,9 @@ internal static class Program
                     RestoreLockScreenFromBackup();
                     return 0;
                 case "--restore-silent":
-                    try { new SystemThemeApplier().Restore(includeHklm: AppInfo.IsAdmin()); } catch (Exception ex) { Log.Error("restore-silent", ex); }
-                    return 0;
+                    try { return new SystemThemeApplier().Restore(includeHklm: AppInfo.IsAdmin()); } catch (Exception ex) { Log.Error("restore-silent", ex); return 1; }
+                case "--repair-fonts":
+                    try { return FontRepairEntry.Run(); } catch (Exception ex) { Log.Error("repair-fonts", ex); return 1; }
             }
         }
 

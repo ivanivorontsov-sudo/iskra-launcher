@@ -93,4 +93,46 @@ internal static class Native
     public const uint SHCNE_ASSOCCHANGED = 0x08000000;
     public const uint SHCNF_IDLIST = 0x0;
     [DllImport("shell32.dll")] public static extern void SHChangeNotify(uint eventId, uint flags, IntPtr item1, IntPtr item2);
+
+    // ---- Шрифты: регистрация, рассылка, живое применение (SPI) ----
+    public const int WM_FONTCHANGE = 0x001D;
+    public const uint SPI_GETNONCLIENTMETRICS = 0x0029, SPI_SETNONCLIENTMETRICS = 0x002A;
+    public const uint SPI_GETICONMETRICS = 0x002D, SPI_SETICONMETRICS = 0x002E;
+    public const int LF_FACESIZE = 32;
+
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode)] public static extern int AddFontResource(string path);
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode)] public static extern int RemoveFontResource(string path);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct LOGFONT
+    {
+        public int lfHeight, lfWidth, lfEscapement, lfOrientation, lfWeight;
+        public byte lfItalic, lfUnderline, lfStrikeOut, lfCharSet, lfOutPrecision, lfClipPrecision, lfQuality, lfPitchAndFamily;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = LF_FACESIZE)] public string lfFaceName;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct NONCLIENTMETRICS
+    {
+        public int cbSize;
+        public int iBorderWidth, iScrollWidth, iScrollHeight, iCaptionWidth, iCaptionHeight;
+        public LOGFONT lfCaptionFont;
+        public int iSmCaptionWidth, iSmCaptionHeight;
+        public LOGFONT lfSmCaptionFont;
+        public int iMenuWidth, iMenuHeight;
+        public LOGFONT lfMenuFont, lfStatusFont, lfMessageFont;
+        public int iPaddedBorderWidth; // Vista+
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct ICONMETRICS
+    {
+        public int cbSize, iHorzSpacing, iVertSpacing, iTitleWrap;
+        public LOGFONT lfFont;
+    }
+
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    public static extern bool SystemParametersInfo(uint action, uint uParam, ref NONCLIENTMETRICS pv, uint winIni);
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW", SetLastError = true)]
+    public static extern bool SystemParametersInfo(uint action, uint uParam, ref ICONMETRICS pv, uint winIni);
 }

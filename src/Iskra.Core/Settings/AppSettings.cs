@@ -53,6 +53,8 @@ public sealed class AppSettings
     public bool WindhawkIntegrationEnabled { get; set; }
     public bool MsStylesIntegrationEnabled { get; set; }
     public bool ShapedIconsSystemWide { get; set; }
+    // --- Раздел «Шрифты»: выбор системного шрифта независимо от темы (см. FontSettings) ---
+    public FontSettings Fonts { get; set; } = new();
 
     public static readonly Dictionary<string, (string Name, string Url)> WebEngines = new()
     {
@@ -116,6 +118,8 @@ public sealed class AppSettings
         Pinned ??= new();
         CustomThemes ??= new();
         SystemOptions ??= new();
+        Fonts ??= new();
+        Fonts.Sanitize();
         if (string.IsNullOrWhiteSpace(Hotkey)) Hotkey = "Alt+Space";
         if (string.IsNullOrWhiteSpace(StartScreenHotkey)) StartScreenHotkey = "Alt+Shift+Space";
         // чиним пользовательские темы
@@ -136,4 +140,50 @@ public sealed class AppSettings
         if (File.Exists(path)) File.Replace(tmp, path, path + ".bak", ignoreMetadataErrors: true);
         else File.Move(tmp, path);
     }
+}
+
+/// <summary>
+/// Настройки раздела «Шрифты» — независимы от темы. Заголовки/меню/значки/сообщения применяются «вживую»
+/// через SystemParametersInfo (без перезагрузки). Базовый UI-шрифт (SystemFont) — через подстановку Segoe UI
+/// (нужны права администратора и повторный вход для большинства приложений).
+/// </summary>
+public sealed class FontSettings
+{
+    /// <summary>Включён ли пользовательский выбор шрифтов (иначе тема/Windows по умолчанию).</summary>
+    public bool Enabled { get; set; }
+    /// <summary>Базовый шрифт интерфейса — подменяет «Segoe UI» для всех классических приложений (HKLM, админ, повторный вход).</summary>
+    public string? SystemFont { get; set; }
+    /// <summary>Заголовки окон (SPI, вживую).</summary>
+    public string? TitleFont { get; set; }
+    /// <summary>Меню (SPI, вживую).</summary>
+    public string? MenuFont { get; set; }
+    /// <summary>Подписи значков рабочего стола (SPI, вживую).</summary>
+    public string? IconFont { get; set; }
+    /// <summary>Текст сообщений/диалогов (SPI, вживую).</summary>
+    public string? MessageFont { get; set; }
+    /// <summary>Базовый размер в пунктах (9 — по умолчанию Windows). 0 — не менять размер.</summary>
+    public double SizePt { get; set; }
+    /// <summary>Применять базовый шрифт через подстановку Segoe UI (требует прав администратора).</summary>
+    public bool ReplaceSystemWide { get; set; }
+
+    public void Sanitize()
+    {
+        SystemFont = Clean(SystemFont);
+        TitleFont = Clean(TitleFont);
+        MenuFont = Clean(MenuFont);
+        IconFont = Clean(IconFont);
+        MessageFont = Clean(MessageFont);
+        if (!double.IsFinite(SizePt) || SizePt < 0) SizePt = 0;
+        if (SizePt > 0) SizePt = Math.Clamp(SizePt, 6, 18);
+        if (!ReplaceSystemWide) SystemFont = SystemFont; // поле сохраняем, но подстановку не делаем
+    }
+
+    private static string? Clean(string? f)
+    {
+        if (string.IsNullOrWhiteSpace(f)) return null;
+        f = f.Trim();
+        return f.Length > 64 ? f.Substring(0, 64) : f;
+    }
+
+    public FontSettings Clone() => (FontSettings)MemberwiseClone();
 }

@@ -30,7 +30,7 @@ public static class RegistryGuard
         (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", new[] { "AccentPalette", "AccentColorMenu", "StartColorMenu" }),
         (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", new[] { "TaskbarAl", "UseCompactMode", "TaskbarSi", "TaskbarGlomLevel" }),
         (RegHive.CurrentUser, @"Control Panel\Cursors", null),
-        (RegHive.CurrentUser, @"Control Panel\Desktop\WindowMetrics", new[] { "IconSpacing", "IconVerticalSpacing", "ScrollWidth", "ScrollHeight", "CaptionHeight", "CaptionWidth", "PaddedBorderWidth", "BorderWidth", "MenuHeight", "MenuWidth", "SmCaptionHeight", "SmCaptionWidth" }),
+        (RegHive.CurrentUser, @"Control Panel\Desktop\WindowMetrics", new[] { "IconSpacing", "IconVerticalSpacing", "ScrollWidth", "ScrollHeight", "CaptionHeight", "CaptionWidth", "PaddedBorderWidth", "BorderWidth", "MenuHeight", "MenuWidth", "SmCaptionHeight", "SmCaptionWidth", "IconFont", "CaptionFont", "MenuFont", "MessageFont", "SmCaptionFont", "StatusFont", "AppliedDPI" }),
         (RegHive.CurrentUser, @"Control Panel\Desktop", new[] { "AutoColorization", "WallPaper", "WallpaperStyle", "TileWallpaper" }),
         (RegHive.CurrentUser, @"Control Panel\Colors", null),
         (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons", null),
