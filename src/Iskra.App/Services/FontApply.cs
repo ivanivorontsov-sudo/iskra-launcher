@@ -124,14 +124,19 @@ internal static class FontApply
 /// <summary>Аккуратный перезапуск Проводника, чтобы рабочий стол и панель задач перечитали шрифты/метрики.</summary>
 internal static class ExplorerRestarter
 {
-    public static void Restart()
+    private static DateTime _last = DateTime.MinValue;
+
+    public static void Restart(bool flushIconCache = false)
     {
         try
         {
+            if ((DateTime.UtcNow - _last).TotalSeconds < 8) return;
+            _last = DateTime.UtcNow;
             foreach (var p in Process.GetProcessesByName("explorer"))
             {
                 try { p.Kill(); } catch { }
             }
+            if (flushIconCache) FlushIconCache();
             // Windows обычно сама поднимает оболочку; на всякий случай стартуем через 800 мс, если её нет.
             System.Threading.Tasks.Task.Run(async () =>
             {
@@ -143,6 +148,23 @@ internal static class ExplorerRestarter
             });
         }
         catch (Exception ex) { Log.Warn("ExplorerRestarter: " + ex.Message); }
+    }
+
+    /// <summary>Кэш значков иначе держит старую картинку и после смены IconLocation. Звать, пока Проводник уже остановлен.</summary>
+    private static void FlushIconCache()
+    {
+        try
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Windows", "Explorer");
+            if (!Directory.Exists(dir)) return;
+            foreach (var f in Directory.EnumerateFiles(dir))
+            {
+                var name = Path.GetFileName(f);
+                if (name.StartsWith("iconcache", StringComparison.OrdinalIgnoreCase) || name.StartsWith("thumbcache", StringComparison.OrdinalIgnoreCase))
+                    try { File.Delete(f); } catch { }
+            }
+        }
+        catch (Exception ex) { Log.Warn("Кэш значков: " + ex.Message); }
     }
 }
 

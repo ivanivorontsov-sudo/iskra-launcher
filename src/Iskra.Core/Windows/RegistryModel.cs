@@ -34,6 +34,8 @@ public static class RegistryGuard
         (RegHive.CurrentUser, @"Control Panel\Desktop", new[] { "AutoColorization", "WallPaper", "WallpaperStyle", "TileWallpaper" }),
         (RegHive.CurrentUser, @"Control Panel\Colors", null),
         (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons", null),
+        (RegHive.CurrentUser, @"Software\Classes\Folder\DefaultIcon", null),
+        (RegHive.CurrentUser, @"Software\Classes\Directory\DefaultIcon", null),
         (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\DefaultIcon", null),
         (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\DefaultIcon", null),
         (RegHive.CurrentUser, @"AppEvents\Schemes", null),

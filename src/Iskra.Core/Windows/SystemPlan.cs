@@ -55,6 +55,9 @@ public static class SystemPlan
     public const string ShellIconsKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
     public const string ThisPcIconKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\DefaultIcon";
     public const string RecycleIconKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\DefaultIcon";
+    // Windows 11 рисует папки отсюда, а не из устаревшего Shell Icons 3/4.
+    public const string FolderIconKey = @"Software\Classes\Folder\DefaultIcon";
+    public const string DirectoryIconKey = @"Software\Classes\Directory\DefaultIcon";
 
     /// <summary>Роли курсоров в HKCU\Control Panel\Cursors.</summary>
     public static readonly string[] CursorRoles =
@@ -170,7 +173,12 @@ public static class SystemPlan
 
         if (o.ShellIcons && assets != null && assets.IconFiles.Count > 0)
         {
-            if (assets.IconFiles.TryGetValue("folder", out var f)) Add(ShellIconsKey, "3", RegKind.ExpandString, f + ",0", "shellicons");
+            if (assets.IconFiles.TryGetValue("folder", out var f))
+            {
+                Add(ShellIconsKey, "3", RegKind.ExpandString, f + ",0", "shellicons");
+                Add(FolderIconKey, "", RegKind.ExpandString, f + ",0", "shellicons");
+                Add(DirectoryIconKey, "", RegKind.ExpandString, f + ",0", "shellicons");
+            }
             if (assets.IconFiles.TryGetValue("folderOpen", out var fo)) Add(ShellIconsKey, "4", RegKind.ExpandString, fo + ",0", "shellicons");
             if (assets.IconFiles.TryGetValue("thispc", out var pc)) Add(ThisPcIconKey, "", RegKind.ExpandString, pc + ",0", "shellicons");
             if (assets.IconFiles.TryGetValue("recycleEmpty", out var re)) Add(RecycleIconKey, "empty", RegKind.ExpandString, re + ",0", "shellicons");

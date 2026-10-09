@@ -46,7 +46,11 @@ internal static class ShortcutIconApplier
                     if (appIcon == null) continue;
                     var key = Sanitize(Path.GetFileNameWithoutExtension(lnk)) + "_" + (uint)lnk.ToLowerInvariant().GetHashCode();
                     var ico = ShapeIconFactory.GenerateShortcutIcon(theme, appIcon, key);
-                    if (ShellLink.SetIconLocation(lnk, ico + ",0")) count++;
+                    if (ShellLink.SetIconLocation(lnk, ico + ",0"))
+                    {
+                        count++;
+                        try { Native.SHChangeNotify(Native.SHCNE_UPDATEITEM, Native.SHCNF_PATHW, lnk, IntPtr.Zero); } catch { }
+                    }
                 }
                 catch (Exception ex) { Log.Warn($"Значок ярлыка {lnk}: {ex.Message}"); }
             }
@@ -69,6 +73,9 @@ internal static class ShortcutIconApplier
     public static void RefreshIcons()
     {
         try { Native.SHChangeNotify(Native.SHCNE_ASSOCCHANGED, Native.SHCNF_IDLIST, IntPtr.Zero, IntPtr.Zero); } catch { }
+        try { Native.SendMessageTimeout(new IntPtr(0xFFFF), Native.WM_SETTINGCHANGE, IntPtr.Zero, "ShellState", Native.SMTO_ABORTIFHUNG, 2000, out _); } catch { }
+        // На Windows 11 стол и папки не перечитывают значок, пока жив кэш Проводника.
+        ExplorerRestarter.Restart(flushIconCache: true);
     }
 
     private static string Sanitize(string s) => string.Concat(s.Split(Path.GetInvalidFileNameChars()));

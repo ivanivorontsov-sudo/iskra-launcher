@@ -107,6 +107,8 @@ public class SystemPlanV11Tests
         assets.IconFiles["recycleEmpty"] = @"C:\x\re.ico";
         var plan = SystemPlan.Build(Dark(), new SystemApplyOptions { ShellIcons = true }, assets);
         Assert.Contains(plan, w => w.Key == SystemPlan.ShellIconsKey && w.Name == "3");
+        Assert.Contains(plan, w => w.Key == SystemPlan.FolderIconKey);
+        Assert.Contains(plan, w => w.Key == SystemPlan.DirectoryIconKey);
         Assert.Contains(plan, w => w.Key == SystemPlan.RecycleIconKey && w.Name == "empty");
     }
 

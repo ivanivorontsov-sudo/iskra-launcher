@@ -90,9 +90,12 @@ internal static class Native
     [DllImport("user32.dll")] public static extern short VkKeyScan(char ch);
 
     // ---- Обновление кэша значков ----
+    public const uint SHCNE_UPDATEITEM = 0x00002000;
     public const uint SHCNE_ASSOCCHANGED = 0x08000000;
     public const uint SHCNF_IDLIST = 0x0;
+    public const uint SHCNF_PATHW = 0x0005;
     [DllImport("shell32.dll")] public static extern void SHChangeNotify(uint eventId, uint flags, IntPtr item1, IntPtr item2);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern void SHChangeNotify(uint eventId, uint flags, string item1, IntPtr item2);
 
     // ---- Шрифты: регистрация, рассылка, живое применение (SPI) ----
     public const int WM_FONTCHANGE = 0x001D;
