@@ -224,8 +224,9 @@ internal sealed class AppState
             try
             {
                 // Значки Windows (папки/корзина/ярлыки) меняем только если тема это разрешает (и это обратимо).
-                Settings.SystemOptions.ShellIcons = theme.Icon.ApplySystemWide;
-                Settings.SystemOptions.ShapedShortcutIcons = theme.Icon.ApplySystemWide;
+                // Форма значков Windows включается вместе с темой, иначе папки остаются штатными.
+                Settings.SystemOptions.ShellIcons = true;
+                Settings.SystemOptions.ShapedShortcutIcons = true;
                 var screen = ScreenSize();
                 var report = await System.ApplySerializedAsync(theme, Settings.SystemOptions, screen);
                 Log.Info($"Тема «{theme.Name}» → Windows: {string.Join(", ", report.Changed)}");

@@ -115,15 +115,17 @@ public static class SystemPlan
             Argb winText = dark ? new(0xFF,0xF0,0xF0,0xF2) : new(0xFF,0x10,0x10,0x12);
             Argb btnFace = dark ? new(0xFF,0x2B,0x2B,0x30) : new(0xFF,0xF0,0xF0,0xF0);
             Argb menu = btnFace, menuText = winText;
-            Argb accentText = Argb.Readable(Argb.Parse(p.Accent), accent) ;
+            // Текст Проводника берёт WindowText/TitleText. На светлой теме белый акцент делает подписи нечитаемыми.
+            Argb titleText = dark ? new(0xFF, 0xF0, 0xF0, 0xF2) : new(0xFF, 0x10, 0x10, 0x12);
+            Argb hilight = dark ? accent : new(0xFF, 0x2F, 0x5F, 0xC4);
             void Col(string name, Argb c) => Add(ColorsKey, name, RegKind.String, $"{c.R} {c.G} {c.B}", "colors");
             Col("Window", win); Col("WindowText", winText);
             Col("Menu", menu); Col("MenuText", menuText);
             Col("ButtonFace", btnFace); Col("ButtonText", winText);
-            Col("Hilight", accent); Col("HilightText", accentText); Col("HotTrackingColor", accent);
-            Col("GrayText", dark ? new(0xFF,0x80,0x80,0x86) : new(0xFF,0x6D,0x6D,0x6D));
-            Col("ActiveTitle", accent); Col("InactiveTitle", btnFace);
-            Col("TitleText", accentText); Col("InactiveTitleText", winText);
+            Col("Hilight", hilight); Col("HilightText", titleText); Col("HotTrackingColor", hilight);
+            Col("GrayText", dark ? new(0xFF,0x80,0x80,0x86) : new(0xFF,0x5C,0x5C,0x62));
+            Col("ActiveTitle", dark ? accent : btnFace); Col("InactiveTitle", btnFace);
+            Col("TitleText", titleText); Col("InactiveTitleText", winText);
             Col("ActiveBorder", btnFace); Col("InactiveBorder", btnFace);
             Col("Background", dark ? new(0xFF,0x0A,0x0A,0x0C) : new(0xFF,0xE8,0xE8,0xEC));
         }
@@ -175,14 +177,14 @@ public static class SystemPlan
         {
             if (assets.IconFiles.TryGetValue("folder", out var f))
             {
-                Add(ShellIconsKey, "3", RegKind.ExpandString, f + ",0", "shellicons");
-                Add(FolderIconKey, "", RegKind.ExpandString, f + ",0", "shellicons");
-                Add(DirectoryIconKey, "", RegKind.ExpandString, f + ",0", "shellicons");
+                Add(ShellIconsKey, "3", RegKind.String, f + ",0", "shellicons");
+                Add(FolderIconKey, "", RegKind.String, f + ",0", "shellicons");
+                Add(DirectoryIconKey, "", RegKind.String, f + ",0", "shellicons");
             }
-            if (assets.IconFiles.TryGetValue("folderOpen", out var fo)) Add(ShellIconsKey, "4", RegKind.ExpandString, fo + ",0", "shellicons");
-            if (assets.IconFiles.TryGetValue("thispc", out var pc)) Add(ThisPcIconKey, "", RegKind.ExpandString, pc + ",0", "shellicons");
-            if (assets.IconFiles.TryGetValue("recycleEmpty", out var re)) Add(RecycleIconKey, "empty", RegKind.ExpandString, re + ",0", "shellicons");
-            if (assets.IconFiles.TryGetValue("recycleFull", out var rf)) Add(RecycleIconKey, "full", RegKind.ExpandString, rf + ",0", "shellicons");
+            if (assets.IconFiles.TryGetValue("folderOpen", out var fo)) Add(ShellIconsKey, "4", RegKind.String, fo + ",0", "shellicons");
+            if (assets.IconFiles.TryGetValue("thispc", out var pc)) Add(ThisPcIconKey, "", RegKind.String, pc + ",0", "shellicons");
+            if (assets.IconFiles.TryGetValue("recycleEmpty", out var re)) Add(RecycleIconKey, "empty", RegKind.String, re + ",0", "shellicons");
+            if (assets.IconFiles.TryGetValue("recycleFull", out var rf)) Add(RecycleIconKey, "full", RegKind.String, rf + ",0", "shellicons");
         }
 
         return w;
