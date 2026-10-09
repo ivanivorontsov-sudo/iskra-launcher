@@ -23,9 +23,16 @@ internal sealed class TrayIcon : IDisposable
             Text = "Искра",
             Visible = false,
         };
-        _icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) _state.ToggleLauncher(); };
+        _icon.MouseClick += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left) return;
+            RunOnUi(() => _state.ToggleLauncher());
+        };
         _icon.ContextMenuStrip = BuildMenu();
-        _state.ThemeChanged += () => { try { _icon.Icon = BuildIcon(Theming.Col(_state.Settings.CurrentTheme().Palette.Accent)); _icon.ContextMenuStrip = BuildMenu(); } catch { } };
+        _state.ThemeChanged += () => RunOnUi(() =>
+        {
+            try { _icon.Icon = BuildIcon(Theming.Col(_state.Settings.CurrentTheme().Palette.Accent)); _icon.ContextMenuStrip = BuildMenu(); } catch { }
+        });
     }
 
     public void Show()
@@ -35,11 +42,34 @@ internal sealed class TrayIcon : IDisposable
         try { _icon.ShowBalloonTip(4000, "Искра", L.F("tray.running", hk), ToolTipIcon.None); } catch { }
     }
 
+    /// <summary>Проводник при смене значков перезапускается и забирает значок с собой. Возвращаем его.</summary>
+    public void Reappear() => RunOnUi(() =>
+    {
+        try
+        {
+            _icon.Visible = false;
+            _icon.Icon = BuildIcon(Theming.Col(_state.Settings.CurrentTheme().Palette.Accent));
+            _icon.Visible = true;
+        }
+        catch (Exception ex) { Log.Error("Трей после Проводника", ex); }
+    });
+
+    private static void RunOnUi(Action act)
+    {
+        try
+        {
+            var d = System.Windows.Application.Current?.Dispatcher;
+            if (d == null || d.CheckAccess()) act();
+            else d.BeginInvoke(act);
+        }
+        catch (Exception ex) { Log.Error("Трей", ex); }
+    }
+
     private ContextMenuStrip BuildMenu()
     {
         var m = new ContextMenuStrip();
-        m.Items.Add(L.T("tray.open"), null, (_, _) => _state.ToggleLauncher());
-        m.Items.Add(L.T("tray.start"), null, (_, _) => _state.ToggleStartScreen());
+        m.Items.Add(L.T("tray.open"), null, (_, _) => RunOnUi(() => _state.ToggleLauncher()));
+        m.Items.Add(L.T("tray.start"), null, (_, _) => RunOnUi(() => _state.ToggleStartScreen()));
         m.Items.Add(new ToolStripSeparator());
 
         var themes = new ToolStripMenuItem(L.T("tray.themes"));
@@ -88,8 +118,17 @@ internal sealed class TrayIcon : IDisposable
             using var core = new SolidBrush(Color.FromArgb(220, 255, 255, 255));
             g.FillEllipse(core, 13, 13, 6, 6);
         }
-        return Icon.FromHandle(bmp.GetHicon());
+        var handle = bmp.GetHicon();
+        try
+        {
+            using var raw = Icon.FromHandle(handle);
+            return (Icon)raw.Clone();
+        }
+        finally { DestroyIcon(handle); }
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyIcon(IntPtr handle);
 
     public void Dispose()
     {

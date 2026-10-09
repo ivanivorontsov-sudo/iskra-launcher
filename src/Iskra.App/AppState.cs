@@ -169,11 +169,26 @@ internal sealed class AppState
     private StartScreenWindow? _startScreen;
     private SettingsWindow? _settings;
 
+    public void ShowLauncher()
+    {
+        try
+        {
+            _launcher ??= new LauncherWindow(this);
+            if (_launcher.IsVisible) { _launcher.Activate(); return; }
+            _launcher.ShowLauncher(false);
+        }
+        catch (Exception ex) { Log.Error("Показ лаунчера", ex); }
+    }
+
     public void ToggleLauncher()
     {
-        _launcher ??= new LauncherWindow(this);
-        if (_launcher.IsVisible) _launcher.HideAnimated();
-        else _launcher.ShowLauncher(false);
+        try
+        {
+            _launcher ??= new LauncherWindow(this);
+            if (_launcher.IsVisible) _launcher.HideAnimated();
+            else _launcher.ShowLauncher(false);
+        }
+        catch (Exception ex) { Log.Error("Переключение лаунчера", ex); }
     }
 
     public void ToggleStartMenu()

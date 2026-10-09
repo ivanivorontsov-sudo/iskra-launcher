@@ -39,9 +39,15 @@ internal static class Program
         _mutex = new Mutex(true, "Iskra_SingleInstance_8F2A", out created);
         if (!created)
         {
-            // Уже запущена — просто выходим (можно расширить до межпроцессного «показать окно»).
+            try
+            {
+                using var ev = EventWaitHandle.OpenExisting("Iskra_Show_8F2A");
+                ev.Set();
+            }
+            catch { }
             return 0;
         }
+        using var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Iskra_Show_8F2A");
 
         Paths.Init();
         RunState.Begin();                 // маркер сеанса (для определения аварий)
@@ -73,6 +79,17 @@ internal static class Program
 
         using var tray = new TrayIcon(State);
         tray.Show();
+        ExplorerRestarter.ExplorerRestarted += () => tray.Reappear();
+
+        var showPump = new Thread(() =>
+        {
+            while (showEvent.WaitOne())
+            {
+                try { app.Dispatcher.BeginInvoke(() => { try { State.ShowLauncher(); } catch (Exception ex) { Log.Error("Показ окна", ex); } }); }
+                catch { }
+            }
+        }) { IsBackground = true, Name = "IskraShow" };
+        showPump.Start();
 
         if (!State.Settings.FirstRunDone)
         {
@@ -81,6 +98,10 @@ internal static class Program
             State.SaveSettings();
             Autostart.Set(State.Settings.Autostart, AppInfo.ExePath);
             State.OpenSettings("themes");
+        }
+        else if (!args.Contains("--tray"))
+        {
+            try { State.ShowLauncher(); } catch (Exception ex) { Log.Error("Показ окна", ex); }
         }
 
         app.Run();

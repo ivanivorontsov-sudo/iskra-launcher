@@ -125,6 +125,7 @@ internal static class FontApply
 internal static class ExplorerRestarter
 {
     private static DateTime _last = DateTime.MinValue;
+    public static event Action? ExplorerRestarted;
 
     public static void Restart(bool flushIconCache = false)
     {
@@ -145,6 +146,7 @@ internal static class ExplorerRestarter
                 {
                     try { Process.Start(new ProcessStartInfo { FileName = "explorer.exe", UseShellExecute = true }); } catch { }
                 }
+                try { ExplorerRestarted?.Invoke(); } catch { }
             });
         }
         catch (Exception ex) { Log.Warn("ExplorerRestarter: " + ex.Message); }

@@ -49,7 +49,13 @@ internal sealed class LauncherWindow : Window
         _debounce.Tick += (_, _) => { _debounce.Stop(); RunSearch(); };
         _state.ThemeChanged += () => { if (IsVisible) BuildChrome(); };
         BuildChrome();
-        Deactivated += (_, _) => { if (IsVisible && !_state.Settings.FirstRunDone == false) HideAnimated(); };
+        Deactivated += (_, _) =>
+        {
+            // Клик по трею, который только что открыл окно, сразу отбирает фокус. Без паузы первое открытие закрывается само.
+            if (!IsVisible || !_state.Settings.FirstRunDone) return;
+            if ((DateTime.UtcNow - _shownAt).TotalMilliseconds < 600) return;
+            HideAnimated();
+        };
         PreviewKeyDown += OnKeyDown;
     }
 
@@ -140,8 +146,11 @@ internal sealed class LauncherWindow : Window
         Content = _card;
     }
 
+    private DateTime _shownAt = DateTime.MinValue;
+
     public void ShowLauncher(bool startMode)
     {
+        _shownAt = DateTime.UtcNow;
         _startMode = startMode;
         PositionWindow();
         Opacity = 0;
