@@ -51,13 +51,19 @@ jobs:
         if: always()
         shell: pwsh
         run: Get-Content "$env:LOCALAPPDATA\Iskra\iskra.log" -Tail 80 -ErrorAction SilentlyContinue
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - name: Push screenshots to branch desktop-shots
+        # Хранилище артефактов может быть переполнено — кладём снимки в отдельную ветку (без запуска CI).
+        if: always() && github.event_name != 'pull_request'
         continue-on-error: true
-        with:
-          name: desktop-shots
-          path: desktop-shots
-          retention-days: 3
+        shell: pwsh
+        run: |
+          git config user.name "iskra-ci"; git config user.email "ci@users.noreply.github.com"
+          git switch --orphan desktop-shots
+          git rm -rf --cached . *> $null
+          Get-ChildItem -Force | Where-Object { $_.Name -notin '.git','desktop-shots' } | Remove-Item -Recurse -Force
+          git add desktop-shots
+          git commit -m "desktop screenshots ${{ github.sha }} [skip ci]"
+          git push -f origin desktop-shots
 
   package:
     needs: test
