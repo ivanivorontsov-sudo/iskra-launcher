@@ -60,70 +60,70 @@ internal static class Program
 
         Paths.Init();
         RunState.Begin();                 // маркер сеанса (для определения аварий)
-        SafeMode.Evaluate();              // Shift при старте или падение в прошлый раз
-
-        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error("Необработанное исключение", e.ExceptionObject as Exception);
-        app.DispatcherUnhandledException += (_, e) => { Log.Error("Исключение UI", e.Exception); e.Handled = true; };
-
-        // Программная отрисовка, если GPU недоступен (Tier 0) или в безопасном режиме — спасает от «чёрного/белого» окна.
         try
         {
-            if (SafeMode.Active || (System.Windows.Media.RenderCapability.Tier >> 16) < 1)
-                System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
-        }
-        catch { }
-
-        // Скрытое окно-приёмник сообщений (для горячих клавиш и трея).
-        var messageWindow = new Window
-        {
-            Width = 0, Height = 0, WindowStyle = WindowStyle.None, ShowInTaskbar = false,
-            ShowActivated = false, Visibility = Visibility.Hidden, Left = -10000, Top = -10000,
-        };
-        messageWindow.Show();
-        messageWindow.Hide();
-
-        State = new AppState();
-        State.Initialize(messageWindow);
-
-        using var tray = new TrayIcon(State);
-        tray.Show();
-        ExplorerRestarter.ExplorerRestarted += () => tray.Reappear();
-
-        var showPump = new Thread(() =>
-        {
-            while (showEvent.WaitOne())
+            SafeMode.Evaluate();          // Shift при старте или падение в прошлый раз
+    
+            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error("Необработанное исключение", e.ExceptionObject as Exception);
+            app.DispatcherUnhandledException += (_, e) => { Log.Error("Исключение UI", e.Exception); e.Handled = true; };
+    
+            // Программная отрисовка, если GPU недоступен (Tier 0) или в безопасном режиме — спасает от «чёрного/белого» окна.
+            try
             {
-                try { app.Dispatcher.BeginInvoke(() => { try { State.ShowLauncher(); } catch (Exception ex) { Log.Error("Показ окна", ex); } }); }
-                catch { }
+                if (SafeMode.Active || (System.Windows.Media.RenderCapability.Tier >> 16) < 1)
+                    System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
             }
-        }) { IsBackground = true, Name = "IskraShow" };
-        showPump.Start();
-
-        if (!State.Settings.FirstRunDone)
-        {
-            State.Settings.FirstRunDone = true;
-            State.Settings.FileSearchFolders = FileIndexer.DefaultFolders();
-            State.SaveSettings();
-            Autostart.Set(State.Settings.Autostart, AppInfo.ExePath);
-            State.OpenSettings("themes");
-        }
-        else if (!args.Contains("--tray"))
-        {
-            try { State.ShowLauncher(); } catch (Exception ex) { Log.Error("Показ окна", ex); }
-        }
-
-        try
-        {
-            app.Run();
+            catch { }
+    
+            // Скрытое окно-приёмник сообщений (для горячих клавиш и трея).
+            var messageWindow = new Window
+            {
+                Width = 0, Height = 0, WindowStyle = WindowStyle.None, ShowInTaskbar = false,
+                ShowActivated = false, Visibility = Visibility.Hidden, Left = -10000, Top = -10000,
+            };
+            messageWindow.Show();
+            messageWindow.Hide();
+    
+            State = new AppState();
+            State.Initialize(messageWindow);
+    
+            using var tray = new TrayIcon(State);
+            tray.Show();
+            ExplorerRestarter.ExplorerRestarted += () => tray.Reappear();
+    
+            var showPump = new Thread(() =>
+            {
+                while (showEvent.WaitOne())
+                {
+                    try { app.Dispatcher.BeginInvoke(() => { try { State.ShowLauncher(); } catch (Exception ex) { Log.Error("Показ окна", ex); } }); }
+                    catch { }
+                }
+            }) { IsBackground = true, Name = "IskraShow" };
+            showPump.Start();
+    
+            if (!State.Settings.FirstRunDone)
+            {
+                State.Settings.FirstRunDone = true;
+                State.Settings.FileSearchFolders = FileIndexer.DefaultFolders();
+                State.SaveSettings();
+                Autostart.Set(State.Settings.Autostart, AppInfo.ExePath);
+                State.OpenSettings("themes");
+            }
+            else if (!args.Contains("--tray"))
+            {
+                try { State.ShowLauncher(); } catch (Exception ex) { Log.Error("Показ окна", ex); }
+            }
+    
+                app.Run();
+                return 0;
         }
         finally
         {
-            try { State.Shutdown(); } catch (Exception ex) { Log.Error("Завершение состояния", ex); }
+            try { if (State is not null) State.Shutdown(); } catch (Exception ex) { Log.Error("Завершение состояния", ex); }
             RunState.End();
             try { instanceMutex.ReleaseMutex(); } catch (ApplicationException) { }
         }
-        return 0;
     }
 
     private static void RestoreLockScreenFromBackup()
