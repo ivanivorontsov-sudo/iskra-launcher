@@ -43,7 +43,7 @@ internal static class IcoWriter
         foreach (var image in images) bw.Write(image);
     }
 
-    /// <summary>BITMAPINFOHEADER + XOR (снизу вверх, BGRA) + пустая AND-маска. Высота в заголовке удвоена.</summary>
+    /// <summary>BITMAPINFOHEADER + XOR (снизу вверх, BGRA) + AND-маска прозрачности. Высота в заголовке удвоена.</summary>
     private static byte[] PngToIconBmp(byte[] png, int size)
     {
         var decoder = new PngBitmapDecoder(new MemoryStream(png), BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
@@ -64,8 +64,22 @@ internal static class IcoWriter
         U32(8, (uint)(h * 2));
         dib[12] = 1; dib[13] = 0; // planes
         dib[14] = 32; dib[15] = 0; // bpp
+        int andOffset = 40 + xorSize;
         for (int y = 0; y < h; y++)
-            Buffer.BlockCopy(pixels, (h - 1 - y) * stride, dib, 40 + y * stride, stride);
+        {
+            int sourceRow = (h - 1 - y) * stride;
+            Buffer.BlockCopy(pixels, sourceRow, dib, 40 + y * stride, stride);
+
+            // В классическом ICO бит AND = 1 означает «прозрачно».
+            // Одного альфа-канала недостаточно для части путей отрисовки оболочки Windows:
+            // без маски прозрачные области исходного PNG становятся чёрными прямоугольниками.
+            int maskRow = andOffset + y * maskStride;
+            for (int x = 0; x < w; x++)
+            {
+                if (pixels[sourceRow + x * 4 + 3] == 0)
+                    dib[maskRow + x / 8] |= (byte)(0x80 >> (x & 7));
+            }
+        }
         return dib;
     }
 }
