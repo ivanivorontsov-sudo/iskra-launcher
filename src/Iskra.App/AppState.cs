@@ -39,7 +39,11 @@ internal sealed class AppState
         _messageWindow = messageWindow;
         LoadSettings();
         L.English = Settings.Language == "en";
-        Theming = new Theming(Settings.CurrentTheme());
+        // В безопасном режиме не загружаем пользовательскую/последнюю выбранную тему: её данные или ресурсы
+        // могли вызвать предыдущий сбой. Берём гарантированно встроенную тему и не меняем сохранённые настройки.
+        var startupTheme = SafeMode.Active ? BuiltInThemes.All[0] : Settings.CurrentTheme();
+        Theming = new Theming(startupTheme);
+        if (SafeMode.Active) Log.Warn($"Безопасный режим: используется встроенная тема «{startupTheme.Name}»; настройки не изменены.");
         ConfigureEngine();
         _hotkeys = new HotkeyManager(messageWindow);
         RegisterHotkeys();

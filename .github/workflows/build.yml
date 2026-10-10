@@ -1,7 +1,7 @@
 name: build
 on:
   push:
-    branches: [ main ]
+    branches: [ main, fix/safe-mode-theme-crash ]
     tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
@@ -122,12 +122,12 @@ jobs:
             dist/*.exe
           generate_release_notes: true
       - name: Publish latest installer release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/safe-mode-theme-crash')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "latest"
+          $tag = if ($env:GITHUB_REF -eq "refs/heads/fix/safe-mode-theme-crash") { "safe-mode-fix" } else { "latest" }
           $assets = @(Get-ChildItem dist -File | Where-Object { $_.Extension -in '.exe', '.zip' })
           if ($assets.Count -eq 0) { throw "No installer or portable archive was built." }
           gh release view $tag *> $null
@@ -138,6 +138,6 @@ jobs:
             }
           } else {
             $files = @($assets | ForEach-Object { $_.FullName })
-            gh release create $tag $files --target $env:GITHUB_SHA --title "Искра — последняя сборка (1.2.0)" --notes "Сборка из актуального main. Включает последние изменения проекта."
+            gh release create $tag $files --target $env:GITHUB_SHA --title "Искра — исправление безопасного режима" --notes "Тестовая сборка с обходом загрузки пользовательской темы в безопасном режиме."
             if ($LASTEXITCODE -ne 0) { throw "Could not create GitHub Release $tag." }
           }
