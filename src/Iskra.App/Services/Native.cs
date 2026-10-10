@@ -101,6 +101,7 @@ internal static class Native
     public const int WM_FONTCHANGE = 0x001D;
     public const uint SPI_GETNONCLIENTMETRICS = 0x0029, SPI_SETNONCLIENTMETRICS = 0x002A;
     public const uint SPI_GETICONMETRICS = 0x002D, SPI_SETICONMETRICS = 0x002E;
+    public const uint SPI_ICONHORIZONTALSPACING = 0x000D, SPI_ICONVERTICALSPACING = 0x0018;
     public const int LF_FACESIZE = 32;
 
     [DllImport("gdi32.dll", CharSet = CharSet.Unicode)] public static extern int AddFontResource(string path);

@@ -83,8 +83,12 @@ internal sealed partial class SettingsWindow
         buttons.Children.Add(Btn(L.T("fonts.apply"), () =>
         {
             f.Enabled = true; _state.SaveSettings();
-            System.Threading.Tasks.Task.Run(() => _state.ApplyFonts());
-            status.Text = L.T("fonts.applied");
+            status.Text = "…";
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var problems = _state.ApplyFonts();
+                Dispatcher.Invoke(() => status.Text = L.T("fonts.applied") + (problems.Count > 0 ? "\n" + L.T("fonts.fallback") + " " + string.Join("; ", problems) : ""));
+            });
         }, true));
         buttons.Children.Add(Btn(L.T("fonts.repair"), () =>
         {

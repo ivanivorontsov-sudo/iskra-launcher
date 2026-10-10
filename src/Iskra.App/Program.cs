@@ -30,6 +30,14 @@ internal static class Program
                     return 0;
                 case "--restore-silent":
                     try { return new SystemThemeApplier().Restore(includeHklm: AppInfo.IsAdmin()); } catch (Exception ex) { Log.Error("restore-silent", ex); return 1; }
+                case "--ci-apply-theme" when args.Length >= 2:
+                    return CiHarness.ApplyTheme(args[1]);
+                case "--ci-repair":
+                    return CiHarness.Repair();
+                case "--icon-batch" when args.Length >= 2:
+                    return ShortcutIconApplier.RunBatch(args[1]);
+                case "--repair-desktop":
+                    try { return DesktopRepair.RunElevatedPart(); } catch (Exception ex) { Log.Error("repair-desktop", ex); return 1; }
                 case "--repair-fonts":
                     try { return FontRepairEntry.Run(); } catch (Exception ex) { Log.Error("repair-fonts", ex); return 1; }
             }

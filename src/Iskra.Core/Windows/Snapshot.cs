@@ -46,6 +46,20 @@ public sealed class ShortcutIconBackup
     public string OriginalIconLocation { get; set; } = "";
 }
 
+/// <summary>Резервная копия значка .url или папки (desktop.ini) на рабочем столе.</summary>
+public sealed class FileIconBackup
+{
+    public string Path { get; set; } = "";
+    /// <summary>"url" или "folder".</summary>
+    public string Kind { get; set; } = "";
+    /// <summary>Было ли (для папки — desktop.ini, для .url — строки IconFile/IconIndex).</summary>
+    public bool Existed { get; set; }
+    /// <summary>Исходное содержимое desktop.ini / значения IconFile,IconIndex ("файл|индекс").</summary>
+    public string? Original { get; set; }
+    /// <summary>Исходные атрибуты папки (для desktop.ini нужен ReadOnly/System).</summary>
+    public int Attributes { get; set; }
+}
+
 /// <summary>Снимок «как было» до первого применения темы к Windows. Каждое значение записывается один раз.</summary>
 public sealed class SystemSnapshot
 {
@@ -66,6 +80,7 @@ public sealed class SystemSnapshot
     public bool HklmTouched { get; set; }
     public bool ShellIconsTouched { get; set; }
     public List<ShortcutIconBackup> Shortcuts { get; set; } = new();
+    public List<FileIconBackup> FileIcons { get; set; } = new();
     public string? RestorePointResult { get; set; }
 
     public bool Contains(RegHive hive, string key, string name)
@@ -74,7 +89,7 @@ public sealed class SystemSnapshot
         return Registry.Any(r => r.Id == id);
     }
 
-    public bool IsEmpty => Registry.Count == 0 && Wallpaper == null && !LockScreenTouched && TaskbarAutoHide == null && Shortcuts.Count == 0;
+    public bool IsEmpty => Registry.Count == 0 && Wallpaper == null && !LockScreenTouched && TaskbarAutoHide == null && Shortcuts.Count == 0 && FileIcons.Count == 0;
 
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -179,7 +194,40 @@ public static class RestoreScriptGenerator
                 sb.AppendLine($"try {{ if (Test-Path {Ps(b.LnkPath)}) {{ $l = $wsh.CreateShortcut({Ps(b.LnkPath)}); $l.IconLocation = {Ps(string.IsNullOrEmpty(b.OriginalIconLocation) ? ",0" : b.OriginalIconLocation)}; $l.Save() }} }} catch {{ Write-Warning $_ }}");
             }
         }
-        if (s.ShellIconsTouched || s.Shortcuts.Count > 0)
+        if (s.FileIcons.Count > 0)
+        {
+            sb.AppendLine("# --- Возврат значков .url и папок (desktop.ini) ---");
+            foreach (var f in s.FileIcons)
+            {
+                if (f.Kind == "folder")
+                {
+                    sb.AppendLine($"try {{ $d = {Ps(f.Path)}; $ini = Join-Path $d 'desktop.ini'; if (Test-Path -LiteralPath $ini) {{ [IO.File]::SetAttributes($ini, 'Normal') }}");
+                    if (f.Existed && f.Original != null)
+                        sb.AppendLine($"  [IO.File]::WriteAllText($ini, {Ps(f.Original)}, [Text.Encoding]::Unicode); [IO.File]::SetAttributes($ini, 'Hidden, System')");
+                    else sb.AppendLine("  if (Test-Path -LiteralPath $ini) { Remove-Item -LiteralPath $ini -Force }");
+                    sb.AppendLine($"  [IO.File]::SetAttributes($d, [IO.FileAttributes]{f.Attributes}) }} catch {{ Write-Warning $_ }}");
+                }
+                else if (f.Kind == "url")
+                {
+                    sb.AppendLine($"try {{ $u = {Ps(f.Path)}; if (Test-Path -LiteralPath $u) {{ $l = Get-Content -LiteralPath $u | Where-Object {{ $_ -notmatch '^Icon(File|Index)=' }}");
+                    if (f.Existed && f.Original != null)
+                    {
+                        var parts = f.Original.Split('|');
+                        sb.AppendLine($"  $l += 'IconFile=' + {Ps(parts[0])}; $l += 'IconIndex=' + {Ps(parts.Length > 1 ? parts[1] : "0")}");
+                    }
+                    sb.AppendLine("  Set-Content -LiteralPath $u -Value $l } } catch { Write-Warning $_ }");
+                }
+            }
+        }
+        if (s.IconSpacingTouched || s.Registry.Any(r => r.Name == "IconSpacing"))
+        {
+            sb.AppendLine("# --- Сетка рабочего стола вживую (SPI_ICONHORIZONTALSPACING / SPI_ICONVERTICALSPACING) ---");
+            sb.AppendLine("$wm = Get-ItemProperty 'HKCU:\\Control Panel\\Desktop\\WindowMetrics'; $dpi = if ($wm.AppliedDPI) { [int]$wm.AppliedDPI } else { 96 }");
+            sb.AppendLine("function GridPx($t) { $v = 0; if ([int]::TryParse(\"$t\", [ref]$v) -and $v -lt 0) { [Math]::Min(150, [Math]::Max(43, [int](-$v / 15))) } else { 75 } }");
+            sb.AppendLine("[IskraRestore.Native]::SystemParametersInfoInt(0x0D, [uint32]((GridPx $wm.IconSpacing) * $dpi / 96), [IntPtr]::Zero, 3) | Out-Null");
+            sb.AppendLine("[IskraRestore.Native]::SystemParametersInfoInt(0x18, [uint32]((GridPx $wm.IconVerticalSpacing) * $dpi / 96), [IntPtr]::Zero, 3) | Out-Null");
+        }
+        if (s.ShellIconsTouched || s.Shortcuts.Count > 0 || s.FileIcons.Count > 0)
             sb.AppendLine("Add-Type -Namespace IskraIco -Name N -MemberDefinition '[DllImport(\"shell32.dll\")] public static extern void SHChangeNotify(uint e, uint f, System.IntPtr a, System.IntPtr b);'; [IskraIco.N]::SHChangeNotify(0x08000000,0,[IntPtr]::Zero,[IntPtr]::Zero)");
         if (s.ContextMenuTouched)
             sb.AppendLine("Write-Host 'Контекстное меню вернётся после перезапуска Проводника или повторного входа.'");

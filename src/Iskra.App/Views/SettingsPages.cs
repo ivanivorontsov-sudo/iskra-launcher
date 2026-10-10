@@ -141,6 +141,32 @@ internal sealed partial class SettingsWindow
         root.Children.Add(Check(L.T("win.opt.Explorer"), o.Explorer, v => Save(() => o.Explorer = v)));
         root.Children.Add(Check(L.T("win.opt.Taskbar"), o.Taskbar, v => Save(() => o.Taskbar = v)));
 
+        // Рабочий стол: плотность сетки, стрелки ярлыков, починка.
+        root.Children.Add(H2(L.T("desk.title")));
+        var grid = new ComboBox { Width = 260, FontFamily = T.UiFont };
+        foreach (var (val, key) in new[] { (IconSpacing.Compact, "desk.compact"), (IconSpacing.Normal, "desk.normal"), (IconSpacing.Wide, "desk.wide") })
+            grid.Items.Add(new ComboBoxItem { Content = L.T(key), Tag = val });
+        grid.SelectedItem = grid.Items.Cast<ComboBoxItem>().FirstOrDefault(i => (IconSpacing)i.Tag! == _state.Settings.DesktopGrid) ?? grid.Items[1];
+        grid.SelectionChanged += (_, _) =>
+        {
+            if (grid.SelectedItem is not ComboBoxItem ci) return;
+            _state.Settings.DesktopGrid = (IconSpacing)ci.Tag!; _state.SaveSettings();
+            var px = Iskra.Core.Windows.SystemPlan.IconSpacingPx(_state.Settings.DesktopGrid)!.Value;
+            System.Threading.Tasks.Task.Run(() => DesktopGrid.Apply(px.H, px.V)); // вживую, без перезапуска
+        };
+        root.Children.Add(LabeledRow(L.T("desk.grid"), grid));
+        root.Children.Add(Check(L.T("desk.arrows"), _state.Settings.HideShortcutArrows, v => { _state.Settings.HideShortcutArrows = v; _state.SaveSettings(); }));
+        root.Children.Add(Body(L.T("desk.limits")));
+        root.Children.Add(Btn(L.T("desk.repair"), () =>
+        {
+            _winStatus.Text = L.T("desk.repairing");
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var done = _state.RepairDesktop();
+                Dispatcher.Invoke(() => _winStatus.Text = L.T("desk.repaired") + " " + string.Join(", ", done));
+            });
+        }, true));
+
         // Экспериментальный системный шрифт.
         root.Children.Add(H2("⚠ " + L.T("win.opt.SystemFontExperimental")));
         root.Children.Add(Body(L.T("win.fontWarn")));

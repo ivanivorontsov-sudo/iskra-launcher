@@ -55,6 +55,10 @@ public sealed class AppSettings
     public bool ShapedIconsSystemWide { get; set; }
     // --- Раздел «Шрифты»: выбор системного шрифта независимо от темы (см. FontSettings) ---
     public FontSettings Fonts { get; set; } = new();
+    /// <summary>Плотность сетки рабочего стола (независимо от темы). Normal = штатные 75 px.</summary>
+    public IconSpacing DesktopGrid { get; set; } = IconSpacing.Normal;
+    /// <summary>Скрывать стрелку на значках ярлыков, когда тема меняет форму значков.</summary>
+    public bool HideShortcutArrows { get; set; } = true;
 
     public static readonly Dictionary<string, (string Name, string Url)> WebEngines = new()
     {

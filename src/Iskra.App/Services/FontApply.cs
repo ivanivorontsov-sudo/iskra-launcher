@@ -27,18 +27,20 @@ internal static class FontApply
             var ncm = new Native.NONCLIENTMETRICS { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.NONCLIENTMETRICS>() };
             if (Native.SystemParametersInfo(Native.SPI_GETNONCLIENTMETRICS, (uint)ncm.cbSize, ref ncm, 0))
             {
-                var title = f.TitleFont; var menu = f.MenuFont; var msg = f.MessageFont;
-                if (!string.IsNullOrEmpty(title)) { ncm.lfCaptionFont = SetFace(ncm.lfCaptionFont, title!, sizePt); ncm.lfSmCaptionFont = SetFace(ncm.lfSmCaptionFont, title!, sizePt); any = true; }
-                if (!string.IsNullOrEmpty(menu)) { ncm.lfMenuFont = SetFace(ncm.lfMenuFont, menu!, sizePt); any = true; }
-                if (!string.IsNullOrEmpty(msg)) { ncm.lfMessageFont = SetFace(ncm.lfMessageFont, msg!, sizePt); ncm.lfStatusFont = SetFace(ncm.lfStatusFont, msg!, sizePt); any = true; }
+                // Пустое имя = оставить текущий шрифт, но размер (если задан) применяем ко всем областям.
+                string Face(string? want, Native.LOGFONT cur) => string.IsNullOrEmpty(want) ? cur.lfFaceName : want!;
+                bool size = sizePt > 0;
+                if (!string.IsNullOrEmpty(f.TitleFont) || size) { ncm.lfCaptionFont = SetFace(ncm.lfCaptionFont, Face(f.TitleFont, ncm.lfCaptionFont), sizePt); ncm.lfSmCaptionFont = SetFace(ncm.lfSmCaptionFont, Face(f.TitleFont, ncm.lfSmCaptionFont), sizePt); any = true; }
+                if (!string.IsNullOrEmpty(f.MenuFont) || size) { ncm.lfMenuFont = SetFace(ncm.lfMenuFont, Face(f.MenuFont, ncm.lfMenuFont), sizePt); any = true; }
+                if (!string.IsNullOrEmpty(f.MessageFont) || size) { ncm.lfMessageFont = SetFace(ncm.lfMessageFont, Face(f.MessageFont, ncm.lfMessageFont), sizePt); ncm.lfStatusFont = SetFace(ncm.lfStatusFont, Face(f.MessageFont, ncm.lfStatusFont), sizePt); any = true; }
                 if (any) Native.SystemParametersInfo(Native.SPI_SETNONCLIENTMETRICS, (uint)ncm.cbSize, ref ncm, SPIF);
             }
-            if (!string.IsNullOrEmpty(f.IconFont))
+            if (!string.IsNullOrEmpty(f.IconFont) || sizePt > 0)
             {
                 var im = new Native.ICONMETRICS { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.ICONMETRICS>() };
                 if (Native.SystemParametersInfo(Native.SPI_GETICONMETRICS, (uint)im.cbSize, ref im, 0))
                 {
-                    im.lfFont = SetFace(im.lfFont, f.IconFont!, sizePt);
+                    im.lfFont = SetFace(im.lfFont, string.IsNullOrEmpty(f.IconFont) ? im.lfFont.lfFaceName : f.IconFont!, sizePt);
                     Native.SystemParametersInfo(Native.SPI_SETICONMETRICS, (uint)im.cbSize, ref im, SPIF);
                     any = true;
                 }
@@ -131,7 +133,8 @@ internal static class ExplorerRestarter
     {
         try
         {
-            if ((DateTime.UtcNow - _last).TotalSeconds < 8) return;
+            // Повторный запрос со сбросом кэша не отбрасываем: иначе новые значки не попадут в кэш.
+            if (!flushIconCache && (DateTime.UtcNow - _last).TotalSeconds < 8) return;
             _last = DateTime.UtcNow;
             foreach (var p in Process.GetProcessesByName("explorer"))
             {

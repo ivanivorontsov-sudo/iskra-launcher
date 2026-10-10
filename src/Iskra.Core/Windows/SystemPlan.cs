@@ -20,6 +20,9 @@ public sealed class SystemApplyOptions
     public bool WindowMetrics { get; set; } = true;   // ширина полосы прокрутки / высота заголовка / отступ рамки
     public bool ShellIcons { get; set; }              // значки папок/этот компьютер/корзина (ЭКСПЕРИМЕНТ, по умолчанию выкл.)
     public bool ShapedShortcutIcons { get; set; }     // перерисовать значки ярлыков рабочего стола/Пуска в форме темы (с бэкапом)
+    public bool HideShortcutArrows { get; set; }      // скрыть стрелку ярлыка (Shell Icons 29 → прозрачный значок), с откатом
+    /// <summary>Плотность сетки рабочего стола из настроек (Unchanged = как в теме).</summary>
+    public Iskra.Core.Themes.IconSpacing GridDensity { get; set; } = Iskra.Core.Themes.IconSpacing.Unchanged;
 }
 
 /// <summary>Пути к сгенерированным файлам темы (курсоры, звуки).</summary>
@@ -32,6 +35,8 @@ public sealed class SystemAssets
     public string CursorSchemeName { get; set; } = "Искра";
     /// <summary>Роль значка (folder, folderOpen, thispc, recycleFull, recycleEmpty) → путь к .ico.</summary>
     public Dictionary<string, string> IconFiles { get; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Прозрачный .ico для скрытия стрелки ярлыка.</summary>
+    public string? BlankIcon { get; set; }
 }
 
 /// <summary>
@@ -73,14 +78,28 @@ public static class SystemPlan
         "DeviceConnect", "DeviceDisconnect", "MailBeep", "WindowsUAC", "Notification.Reminder",
     };
 
-    /// <summary>Интервал значков в твипах (отрицательное значение = пиксели × 15).</summary>
-    public static int? IconSpacingTwips(IconSpacing s) => s switch
+    // Сетка рабочего стола. WindowMetrics\IconSpacing/IconVerticalSpacing хранятся в твипах: −15 × пиксели (при 96 dpi;
+    // Windows сама масштабирует под AppliedDPI). Допустимо 32…182 px. В 1.1.0 «Широкая» давала −1500 (100 px),
+    // а с масштабом 125 % — 125 px на ячейку: огромная разреженная сетка с обрезанной правой колонкой.
+    public const int GridMinPx = 43, GridMaxPx = 150;
+    public static (int H, int V)? IconSpacingPx(IconSpacing s) => s switch
     {
-        IconSpacing.Compact => -1050,
-        IconSpacing.Normal => -1125,
-        IconSpacing.Wide => -1500,
+        IconSpacing.Compact => (68, 68),
+        IconSpacing.Normal => (75, 75),   // штатное значение Windows (−1125)
+        IconSpacing.Wide => (84, 80),
         _ => null,
     };
+    public static int PxToTwips(int px) => -15 * Math.Clamp(px, GridMinPx, GridMaxPx);
+    public static int TwipsToPx(int twips) => Math.Clamp(Math.Abs(twips) / 15, GridMinPx, GridMaxPx);
+    /// <summary>Значение реестра вне разумных пределов (сломанная сетка) — его надо починить.</summary>
+    public static bool IsGridValueBroken(string? twips)
+    {
+        if (string.IsNullOrWhiteSpace(twips)) return false;            // нет значения — Windows берёт своё
+        if (!int.TryParse(twips, out var t) || t == 0) return true;
+        int px = t < 0 ? -t / 15 : t;                                   // положительное значение трактуется как пиксели
+        return px < 32 || px > GridMaxPx;
+    }
+    public static int? IconSpacingTwips(IconSpacing s) => IconSpacingPx(s) is { } px ? PxToTwips(px.H) : null;
 
     public static List<RegWrite> Build(SystemProfile p, SystemApplyOptions o, SystemAssets? assets = null)
     {
@@ -118,14 +137,28 @@ public static class SystemPlan
             // Текст Проводника берёт WindowText/TitleText. На светлой теме белый акцент делает подписи нечитаемыми.
             Argb titleText = dark ? new(0xFF, 0xF0, 0xF0, 0xF2) : new(0xFF, 0x10, 0x10, 0x12);
             Argb hilight = dark ? accent : new(0xFF, 0x2F, 0x5F, 0xC4);
+            // Гарантия контраста (WCAG): текст каждой пары подбирается к своему фону, иначе — чёрный/белый.
+            winText = Argb.Readable(winText, win, 7.0);
+            menuText = Argb.Readable(menuText, menu, 7.0);
+            Argb btnText = Argb.Readable(winText, btnFace, 7.0);
+            Argb activeTitle = dark ? accent : btnFace;
+            // Средний по яркости акцент не даёт 4.5:1 ни с белым, ни с чёрным — тогда затемняем фон заголовка.
+            for (int i = 0; i < 8 && Argb.Contrast(Argb.Readable(titleText, activeTitle, 4.5), activeTitle) < 4.5; i++)
+                activeTitle = activeTitle.Shade(-0.15);
+            titleText = Argb.Readable(titleText, activeTitle, 4.5);
+            for (int i = 0; i < 8 && Argb.Contrast(Argb.Readable(new Argb(0xFF, 0xFF, 0xFF, 0xFF), hilight, 4.5), hilight) < 4.5; i++)
+                hilight = hilight.Shade(-0.15);
+            Argb hilightText = Argb.Readable(new Argb(0xFF, 0xFF, 0xFF, 0xFF), hilight, 4.5);
+            Argb inactiveTitleText = Argb.Readable(winText, btnFace, 4.5);
+            Argb grayText = Argb.Readable(dark ? new(0xFF,0x80,0x80,0x86) : new(0xFF,0x5C,0x5C,0x62), win, 3.0);
             void Col(string name, Argb c) => Add(ColorsKey, name, RegKind.String, $"{c.R} {c.G} {c.B}", "colors");
             Col("Window", win); Col("WindowText", winText);
             Col("Menu", menu); Col("MenuText", menuText);
-            Col("ButtonFace", btnFace); Col("ButtonText", winText);
-            Col("Hilight", hilight); Col("HilightText", titleText); Col("HotTrackingColor", hilight);
-            Col("GrayText", dark ? new(0xFF,0x80,0x80,0x86) : new(0xFF,0x5C,0x5C,0x62));
-            Col("ActiveTitle", dark ? accent : btnFace); Col("InactiveTitle", btnFace);
-            Col("TitleText", titleText); Col("InactiveTitleText", winText);
+            Col("ButtonFace", btnFace); Col("ButtonText", btnText);
+            Col("Hilight", hilight); Col("HilightText", hilightText); Col("HotTrackingColor", hilight);
+            Col("GrayText", grayText);
+            Col("ActiveTitle", activeTitle); Col("InactiveTitle", btnFace);
+            Col("TitleText", titleText); Col("InactiveTitleText", inactiveTitleText);
             Col("ActiveBorder", btnFace); Col("InactiveBorder", btnFace);
             Col("Background", dark ? new(0xFF,0x0A,0x0A,0x0C) : new(0xFF,0xE8,0xE8,0xEC));
         }
@@ -147,11 +180,15 @@ public static class SystemPlan
                     Add($@"{SchemesKey}\Apps\.Default\{ev}\.Current", "", RegKind.String, path, "sounds");
         }
 
-        if (o.IconSpacing && IconSpacingTwips(p.IconSpacing) is int tw)
+        var grid = o.GridDensity != IconSpacing.Unchanged ? o.GridDensity : p.IconSpacing;
+        if (o.IconSpacing && IconSpacingPx(grid) is { } gp)
         {
-            Add(WindowMetricsKey, "IconSpacing", RegKind.String, tw.ToString(System.Globalization.CultureInfo.InvariantCulture), "icons");
-            Add(WindowMetricsKey, "IconVerticalSpacing", RegKind.String, tw.ToString(System.Globalization.CultureInfo.InvariantCulture), "icons");
+            Add(WindowMetricsKey, "IconSpacing", RegKind.String, PxToTwips(gp.H).ToString(System.Globalization.CultureInfo.InvariantCulture), "icons");
+            Add(WindowMetricsKey, "IconVerticalSpacing", RegKind.String, PxToTwips(gp.V).ToString(System.Globalization.CultureInfo.InvariantCulture), "icons");
         }
+
+        if (o.HideShortcutArrows && assets?.BlankIcon is { Length: > 0 } blank)
+            Add(ShellIconsKey, "29", RegKind.String, blank + ",0", "shellicons");
 
         if (o.ContextMenu)
         {

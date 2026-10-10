@@ -17,9 +17,13 @@ internal static class WindowStyler
         ApplyToHwnd(hwnd, theme, reduceEffects);
     }
 
-    public static void ApplyToHwnd(IntPtr hwnd, ThemeDefinition theme, bool reduceEffects)
+    /// <param name="foreign">Чужое окно (Проводник, диалоги): только рамка/углы/тёмный заголовок. Материал и
+    /// расширение рамки на клиентскую область НЕ применяются — иначе содержимое Проводника становится полупрозрачным
+    /// и на светлых темах (Прожектор) текст «засветляется».</param>
+    public static void ApplyToHwnd(IntPtr hwnd, ThemeDefinition theme, bool reduceEffects, bool foreign = false)
     {
-        int dark = theme.Dark ? 1 : 0;
+        // Для чужих окон тёмный заголовок синхронизируем с режимом приложений Windows, а не с темой лаунчера.
+        int dark = (foreign ? theme.System.AppsDark : theme.Dark) ? 1 : 0;
         Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
 
         int corner = theme.System.Corners switch
@@ -31,7 +35,7 @@ internal static class WindowStyler
         };
         Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
 
-        bool backdropAvailable = BackdropCaps.Available(reduceEffects);
+        bool backdropAvailable = !foreign && BackdropCaps.Available(reduceEffects);
         int backdrop = !backdropAvailable ? Native.DWMSBT_NONE : theme.Effects.Material switch
         {
             Material.Mica => Native.DWMSBT_MAINWINDOW,
@@ -41,7 +45,13 @@ internal static class WindowStyler
         };
         Native.DwmSetWindowAttribute(hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, ref backdrop, sizeof(int));
 
-        if (backdrop != Native.DWMSBT_NONE)
+        if (foreign)
+        {
+            // Снимаем то, что могла оставить 1.1.0 (стекло на всю клиентскую область Проводника).
+            var zero = new Native.MARGINS();
+            Native.DwmExtendFrameIntoClientArea(hwnd, ref zero);
+        }
+        else if (backdrop != Native.DWMSBT_NONE)
         {
             var m = new Native.MARGINS { L = -1, R = -1, T = -1, B = -1 };
             Native.DwmExtendFrameIntoClientArea(hwnd, ref m);

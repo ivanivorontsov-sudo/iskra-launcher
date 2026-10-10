@@ -59,7 +59,7 @@ internal sealed class DwmWatcher
         if (_styled.Contains(hwnd)) return true;
         try
         {
-            WindowStyler.ApplyToHwnd(hwnd, _theme!, reduceEffects: false);
+            WindowStyler.ApplyToHwnd(hwnd, _theme!, reduceEffects: false, foreign: true);
             _styled.Add(hwnd);
         }
         catch { }

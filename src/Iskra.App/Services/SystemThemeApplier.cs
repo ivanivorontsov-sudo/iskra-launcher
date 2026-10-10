@@ -33,6 +33,8 @@ internal sealed class SystemThemeApplier
         return new SystemSnapshot();
     }
 
+    public void SaveSnapshotPublic() => SaveSnapshot();
+
     private void SaveSnapshot()
     {
         try { Iskra.Core.Settings.AppSettings.SaveAtomic(Paths.Snapshot, Snapshot.ToJson()); }
@@ -66,6 +68,10 @@ internal sealed class SystemThemeApplier
                 foreach (var kv in ShapeIconFactory.GenerateShellIcons(theme)) assets.IconFiles[kv.Key] = kv.Value;
                 Snapshot.ShellIconsTouched = true;
             }
+            if (options.HideShortcutArrows)
+            {
+                try { assets.BlankIcon = ShapeIconFactory.GenerateBlankIcon(); Snapshot.ShellIconsTouched = true; } catch (Exception ex) { Log.Error("Прозрачный значок", ex); }
+            }
 
             // 2. Реестровые изменения (цвета, звуки, курсоры, значки, контекстное меню, панель задач).
             var plan = SystemPlan.Build(theme.System, options, assets);
@@ -77,12 +83,20 @@ internal sealed class SystemThemeApplier
             if (options.ContextMenu) { changed.Add(L("contextmenu")); Snapshot.ContextMenuTouched = true; }
             if (options.Taskbar && theme.System.TaskbarAlignment != TaskbarAlign.Unchanged) changed.Add(L("taskbar"));
             if (options.WindowMetrics) changed.Add(L("metrics"));
-            if (options.ShellIcons && assets.IconFiles.Count > 0) { changed.Add(L("shellicons")); ShortcutIconApplier.RefreshIcons(); }
+            if (options.IconSpacing) DesktopGrid.ApplyFromRegistry(); // сетка — вживую через SPI, без перезапуска
+            bool iconsChanged = false;
+            if (options.ShellIcons && assets.IconFiles.Count > 0) { changed.Add(L("shellicons")); iconsChanged = true; }
+            if (options.HideShortcutArrows && assets.BlankIcon != null) iconsChanged = true;
             if (options.ShapedShortcutIcons)
             {
                 int n = ShortcutIconApplier.Apply(theme, Snapshot);
-                if (n > 0) changed.Add(L("shortcuticons") + " (" + n + ")");
+                if (n > 0) { changed.Add(L("shortcuticons") + " (" + n + ")"); iconsChanged = true; }
+                if (ShortcutIconApplier.LastReport.Unsupported > 0)
+                    skipped.Add((Iskra.Core.Loc.L.English ? "plain files keep their icon: " : "обычные файлы без своего значка: ") + string.Join(", ", ShortcutIconApplier.LastReport.UnsupportedNames.Take(6)));
             }
+            // ОДНО обновление в самом конце, после всех записей. Раньше кэш сбрасывался до записи ярлыков,
+            // а второй перезапуск Проводника отбрасывался защитой от частых перезапусков — значки не обновлялись.
+            if (iconsChanged) ShortcutIconApplier.RefreshIcons(restartExplorer: true);
 
             // 3. Обои (и слайд-шоу).
             if (options.Wallpaper)
@@ -236,6 +250,7 @@ internal sealed class SystemThemeApplier
             catch (Exception ex) { Log.Error("Починка шрифтов", ex); errors++; }
         }
 
+        try { DesktopGrid.ApplyFromRegistry(); } catch { } // сетка — вживую из восстановленного реестра
         FontApply.PushNonClientFromRegistry(); // живой возврат заголовков/меню/значков из реестра
         DwmWatcher.Instance.Stop();
         ThemeBroadcast.Notify();

@@ -227,6 +227,8 @@ internal sealed class AppState
                 // Форма значков Windows включается вместе с темой, иначе папки остаются штатными.
                 Settings.SystemOptions.ShellIcons = true;
                 Settings.SystemOptions.ShapedShortcutIcons = true;
+                Settings.SystemOptions.HideShortcutArrows = Settings.HideShortcutArrows;
+                Settings.SystemOptions.GridDensity = Settings.DesktopGrid;
                 var screen = ScreenSize();
                 var report = await System.ApplySerializedAsync(theme, Settings.SystemOptions, screen);
                 Log.Info($"Тема «{theme.Name}» → Windows: {string.Join(", ", report.Changed)}");
@@ -263,16 +265,37 @@ internal sealed class AppState
         return outcome;
     }
 
-    /// <summary>Применяет раздел «Шрифты» (вживую). Для базового шрифта (подстановка) нужны права администратора.</summary>
-    public void ApplyFonts()
+    /// <summary>
+    /// Применяет раздел «Шрифты» в правильном порядке: 1) проверка шрифта (есть ли, есть ли кириллица) и установка
+    /// встроенного для пользователя; 2) подстановка Segoe UI (HKLM, UAC) — если включена; 3) LOGFONT заголовков/меню/
+    /// значков/сообщений через SPI_SETNONCLIENTMETRICS/SPI_SETICONMETRICS + SPIF_SENDCHANGE; 4) WM_SETTINGCHANGE/WM_FONTCHANGE.
+    /// </summary>
+    public List<string> ApplyFonts()
     {
+        var problems = new List<string>();
         try
         {
-            System.ApplyFonts(Settings.Fonts);
-            if (Settings.Fonts.Enabled && Settings.Fonts.ReplaceSystemWide && !string.IsNullOrWhiteSpace(Settings.Fonts.SystemFont))
-                new SystemFontApplier(System).ApplyElevated(Settings.Fonts.SystemFont!);
+            var f = Settings.Fonts.Clone();
+            f.TitleFont = FontCheck.Ensure(f.TitleFont, problems);
+            f.MenuFont = FontCheck.Ensure(f.MenuFont, problems);
+            f.IconFont = FontCheck.Ensure(f.IconFont, problems);
+            f.MessageFont = FontCheck.Ensure(f.MessageFont, problems);
+            if (f.Enabled && f.ReplaceSystemWide && !string.IsNullOrWhiteSpace(f.SystemFont))
+            {
+                var sysFace = FontCheck.Ensure(f.SystemFont, problems);
+                if (sysFace != null) new SystemFontApplier(System).ApplyElevated(sysFace);
+            }
+            System.ApplyFonts(f);
         }
-        catch (Exception ex) { Log.Error("ApplyFonts", ex); }
+        catch (Exception ex) { Log.Error("ApplyFonts", ex); problems.Add(ex.Message); }
+        return problems;
+    }
+
+    /// <summary>«Починить рабочий стол»: сетка, значки, стрелки, кэш, шрифты.</summary>
+    public List<string> RepairDesktop()
+    {
+        try { return DesktopRepair.Run(System); }
+        catch (Exception ex) { Log.Error("Починка рабочего стола", ex); return new List<string> { ex.Message }; }
     }
 
     private void HandleIskraCommand(BuiltinItems.Cmd c)
