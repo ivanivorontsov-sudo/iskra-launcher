@@ -63,19 +63,15 @@ internal static class ShapeIconFactory
         return frames;
     }
 
-    /// <summary>Полностью прозрачный значок — им скрываем стрелку ярлыка (Shell Icons, индекс 29).</summary>
+    /// <summary>
+    /// Полностью прозрачный значок для скрытия стрелки ярлыка (Shell Icons\29). Кадры — классические 32-битные DIB
+    /// с нулевой альфой и маской AND из единиц: с PNG-кадрами Проводник рисует вместо стрелки чёрный квадрат.
+    /// </summary>
     public static string GenerateBlankIcon()
     {
         var path = Path.Combine(Paths.Icons, "blank.ico");
         Directory.CreateDirectory(Paths.Icons);
-        var frames = new List<(int, byte[])>();
-        foreach (var sz in new[] { 16, 32, 48, 256 })
-        {
-            var rtb = new RenderTargetBitmap(sz, sz, 96, 96, PixelFormats.Pbgra32);
-            var enc = new PngBitmapEncoder(); enc.Frames.Add(BitmapFrame.Create(rtb));
-            using var ms = new MemoryStream(); enc.Save(ms); frames.Add((sz, ms.ToArray()));
-        }
-        IcoWriter.Write(path, frames);
+        File.WriteAllBytes(path, BlankIco.Build(new[] { 16, 24, 32, 48, 64, 256 }));
         return path;
     }
 
@@ -151,4 +147,41 @@ internal static class ShapeIconFactory
         (byte)(c.R + (255 - c.R) * k), (byte)(c.G + (255 - c.G) * k), (byte)(c.B + (255 - c.B) * k));
 
     private static Color ToColor(string hex) { var a = Argb.Parse(hex, new Argb(0xFF, 0x5A, 0xA9, 0xFF)); return Color.FromArgb(a.A, a.R, a.G, a.B); }
+}
+
+/// <summary>Сборка прозрачного .ico из DIB-кадров (вынесено отдельно для тестов).</summary>
+internal static class BlankIco
+{
+    public static byte[] Build(int[] sizes)
+    {
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+        bw.Write((short)0); bw.Write((short)1); bw.Write((short)sizes.Length);
+        var frames = new List<byte[]>();
+        foreach (var sz in sizes) frames.Add(Frame(sz));
+        int offset = 6 + 16 * sizes.Length;
+        for (int i = 0; i < sizes.Length; i++)
+        {
+            int sz = sizes[i];
+            bw.Write((byte)(sz >= 256 ? 0 : sz)); bw.Write((byte)(sz >= 256 ? 0 : sz));
+            bw.Write((byte)0); bw.Write((byte)0); bw.Write((short)1); bw.Write((short)32);
+            bw.Write(frames[i].Length); bw.Write(offset);
+            offset += frames[i].Length;
+        }
+        foreach (var f in frames) bw.Write(f);
+        return ms.ToArray();
+    }
+
+    private static byte[] Frame(int s)
+    {
+        int maskRow = (s + 31) / 32 * 4;
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+        bw.Write(40); bw.Write(s); bw.Write(s * 2); bw.Write((short)1); bw.Write((short)32);
+        bw.Write(0); bw.Write(s * s * 4 + maskRow * s); bw.Write(0); bw.Write(0); bw.Write(0); bw.Write(0);
+        bw.Write(new byte[s * s * 4]);                       // BGRA = 0 (альфа 0)
+        var mask = new byte[maskRow * s]; Array.Fill(mask, (byte)0xFF); // AND = 1 → прозрачно
+        bw.Write(mask);
+        return ms.ToArray();
+    }
 }
