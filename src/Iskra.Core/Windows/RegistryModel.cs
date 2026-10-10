@@ -28,7 +28,9 @@ public static class RegistryGuard
         (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", null),
         (RegHive.CurrentUser, @"Software\Microsoft\Windows\DWM", new[] { "ColorPrevalence", "AccentColor", "ColorizationColor", "ColorizationAfterglow", "AccentColorInactive" }),
         (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent", new[] { "AccentPalette", "AccentColorMenu", "StartColorMenu" }),
-        (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", new[] { "TaskbarAl", "UseCompactMode", "TaskbarSi", "TaskbarGlomLevel" }),
+        (RegHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", new[] { "TaskbarAl", "UseCompactMode", "TaskbarSi", "TaskbarGlomLevel", "ListviewShadow" }),
+        // Стрелка ярлыка: Windows читает переопределение оверлея только из HKLM. Разрешён ровно один индекс (29).
+        (RegHive.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons", new[] { "29" }),
         (RegHive.CurrentUser, @"Control Panel\Cursors", null),
         (RegHive.CurrentUser, @"Control Panel\Desktop\WindowMetrics", new[] { "IconSpacing", "IconVerticalSpacing", "ScrollWidth", "ScrollHeight", "CaptionHeight", "CaptionWidth", "PaddedBorderWidth", "BorderWidth", "MenuHeight", "MenuWidth", "SmCaptionHeight", "SmCaptionWidth", "IconFont", "CaptionFont", "MenuFont", "MessageFont", "SmCaptionFont", "StatusFont", "AppliedDPI" }),
         (RegHive.CurrentUser, @"Control Panel\Desktop", new[] { "AutoColorization", "WallPaper", "WallpaperStyle", "TileWallpaper" }),

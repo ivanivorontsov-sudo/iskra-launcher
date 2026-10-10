@@ -34,6 +34,8 @@ internal static class Program
                     return CiHarness.ApplyTheme(args[1]);
                 case "--ci-repair":
                     return CiHarness.Repair();
+                case "--hklm-writes" when args.Length >= 2:
+                    return HklmWriter.Run(args[1]);
                 case "--icon-batch" when args.Length >= 2:
                     return ShortcutIconApplier.RunBatch(args[1]);
                 case "--repair-desktop":

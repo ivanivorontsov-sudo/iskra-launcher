@@ -89,9 +89,11 @@ public class ShortcutArrowTests
     {
         var assets = new SystemAssets { BlankIcon = @"C:\x\blank.ico" };
         var plan = SystemPlan.Build(BuiltInThemes.All[0].System, new SystemApplyOptions { HideShortcutArrows = true }, assets);
-        var w = plan.Single(x => x.Key == SystemPlan.ShellIconsKey && x.Name == "29");
+        var w = plan.Single(x => x.Name == "29");
         Assert.Equal(@"C:\x\blank.ico,0", w.Value);
-        Assert.Equal(RegHive.CurrentUser, w.Hive);
+        Assert.Equal(RegHive.LocalMachine, w.Hive);            // HKCU Windows для оверлея не читает
+        Assert.Equal(SystemPlan.ShellIconsKeyLm, w.Key);
+        Assert.False(RegistryGuard.IsAllowed(new RegWrite(RegHive.LocalMachine, SystemPlan.ShellIconsKeyLm, "3", RegKind.String, "x", "t")));
         Assert.True(RegistryGuard.IsAllowed(w));
     }
 

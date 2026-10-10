@@ -108,7 +108,8 @@ internal static class DesktopRepair
         catch (Exception ex) { Log.Error("Шрифт подписей", ex); }
 
         // 5. Системный шрифт (HKLM) — только если повреждён, с одним запросом UAC.
-        if (SystemThemeApplier.FontRepairNeeded() && FontRepairEntry.RunElevated()) done.Add("шрифты Segoe UI");
+        // 5. HKLM: наша стрелка ярлыка и повреждённый Segoe UI — одним запросом UAC, только если есть что чинить.
+        if ((SystemThemeApplier.FontRepairNeeded() || OurArrowInHklm()) && RunElevatedRepair()) done.Add("стрелки ярлыков (HKLM) и шрифты Segoe UI");
 
         // 6. Кэш значков + мягкий перезапуск Проводника.
         ShortcutIconApplier.RefreshIcons(restartExplorer: true);
@@ -117,7 +118,38 @@ internal static class DesktopRepair
     }
 
     /// <summary>Повышенная часть (--repair-desktop): починка Segoe UI.</summary>
-    public static int RunElevatedPart() => FontRepairEntry.Run();
+    public static int RunElevatedPart()
+    {
+        try
+        {
+            using var k = Registry.LocalMachine.OpenSubKey(SystemPlan.ShellIconsKeyLm, true);
+            if (k?.GetValue("29") is string v && v.Contains(OurMarker, StringComparison.OrdinalIgnoreCase)) k.DeleteValue("29", false);
+        }
+        catch (Exception ex) { Log.Warn("Стрелка ярлыка (HKLM): " + ex.Message); }
+        return SystemThemeApplier.FontRepairNeeded() ? FontRepairEntry.Run() : 0;
+    }
+
+    private static bool OurArrowInHklm()
+    {
+        try { using var k = Registry.LocalMachine.OpenSubKey(SystemPlan.ShellIconsKeyLm); return k?.GetValue("29") is string v && v.Contains(OurMarker, StringComparison.OrdinalIgnoreCase); }
+        catch { return false; }
+    }
+
+    private static bool RunElevatedRepair()
+    {
+        if (AppInfo.IsAdmin()) return RunElevatedPart() == 0;
+        try
+        {
+            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = AppInfo.ExePath, Arguments = "--repair-desktop", UseShellExecute = true, Verb = "runas",
+                WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
+            });
+            p?.WaitForExit(120000);
+            return p != null && p.ExitCode == 0;
+        }
+        catch { return false; }
+    }
 
     private static void DeleteIfOurs(string key, string name)
     {

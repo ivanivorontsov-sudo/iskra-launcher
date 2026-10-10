@@ -35,6 +35,18 @@ internal sealed class SystemThemeApplier
 
     public void SaveSnapshotPublic() => SaveSnapshot();
 
+    private static bool HklmMatches(RegWrite w)
+    {
+        try
+        {
+            using var k = Registry.LocalMachine.OpenSubKey(w.Key);
+            var cur = k?.GetValue(w.Name);
+            if (w.Kind == RegKind.DeleteValue) return cur == null;
+            return cur != null && string.Equals(cur.ToString(), w.Value?.ToString(), StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
     private void SaveSnapshot()
     {
         try { Iskra.Core.Settings.AppSettings.SaveAtomic(Paths.Snapshot, Snapshot.ToJson()); }
@@ -75,7 +87,14 @@ internal sealed class SystemThemeApplier
 
             // 2. Реестровые изменения (цвета, звуки, курсоры, значки, контекстное меню, панель задач).
             var plan = SystemPlan.Build(theme.System, options, assets);
-            applier.Apply(plan);
+            applier.Apply(plan); // HKLM без прав не запишется, но исходные значения уже в снимке
+            SaveSnapshot();
+            var lmPending = plan.Where(w => w.Hive == RegHive.LocalMachine && !HklmMatches(w)).ToList();
+            if (lmPending.Count > 0 && !AppInfo.IsAdmin())
+            {
+                if (HklmWriter.RunElevated(lmPending)) Snapshot.HklmTouched = true;
+                else skipped.Add(Iskra.Core.Loc.L.English ? "admin-only parts (UAC declined)" : "части, требующие прав администратора (UAC отклонён)");
+            }
             if (options.Colors) changed.Add(L("colors"));
             if (options.Cursors && assets.Cursors.Count > 0) changed.Add(L("cursors"));
             if (options.Sounds && assets.Sounds.Count > 0) changed.Add(L("sounds"));

@@ -58,6 +58,7 @@ public static class SystemPlan
     public const string ContentDeliveryKey = @"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager";
     public const string ColorsKey = @"Control Panel\Colors";
     public const string ShellIconsKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
+    public const string ShellIconsKeyLm = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
     public const string ThisPcIconKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{20D04FE0-3AEA-1069-A2D8-08002B30309D}\DefaultIcon";
     public const string RecycleIconKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\DefaultIcon";
     // Windows 11 рисует папки отсюда, а не из устаревшего Shell Icons 3/4.
@@ -188,7 +189,10 @@ public static class SystemPlan
         }
 
         if (o.HideShortcutArrows && assets?.BlankIcon is { Length: > 0 } blank)
-            Add(ShellIconsKey, "29", RegKind.String, blank + ",0", "shellicons");
+            w.Add(new RegWrite(RegHive.LocalMachine, ShellIconsKeyLm, "29", RegKind.String, blank + ",0", "shellicons")); // только HKLM работает
+
+        // Тень под подписями значков: подписи рабочего стола Windows всегда белые — на светлых обоях без тени не читаются.
+        if (o.IconSpacing) Add(AdvancedKey, "ListviewShadow", RegKind.DWord, 1, "icons");
 
         if (o.ContextMenu)
         {
