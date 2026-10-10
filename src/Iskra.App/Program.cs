@@ -10,7 +10,6 @@ namespace Iskra.App;
 
 internal static class Program
 {
-    private static Mutex? _mutex;
     public static AppState State { get; private set; } = null!;
 
     [STAThread]
@@ -45,19 +44,19 @@ internal static class Program
             }
         }
 
-        bool created;
-        _mutex = new Mutex(true, "Iskra_SingleInstance_8F2A", out created);
-        if (!created)
+        // Сначала создаём событие, затем захватываем mutex: второй запуск не попадёт
+        // в окно гонки, когда mutex уже существует, а событие показа ещё не создано.
+        using var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Iskra_Show_8F2A");
+        using var instanceMutex = new Mutex(false, "Iskra_SingleInstance_8F2A");
+        bool ownsMutex;
+        try { ownsMutex = instanceMutex.WaitOne(0); }
+        catch (AbandonedMutexException) { ownsMutex = true; } // прошлый процесс завершился аварийно
+
+        if (!ownsMutex)
         {
-            try
-            {
-                using var ev = EventWaitHandle.OpenExisting("Iskra_Show_8F2A");
-                ev.Set();
-            }
-            catch { }
+            try { showEvent.Set(); } catch (Exception ex) { Log.Warn("Сигнал уже запущенному экземпляру: " + ex.Message); }
             return 0;
         }
-        using var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Iskra_Show_8F2A");
 
         Paths.Init();
         RunState.Begin();                 // маркер сеанса (для определения аварий)
@@ -114,10 +113,16 @@ internal static class Program
             try { State.ShowLauncher(); } catch (Exception ex) { Log.Error("Показ окна", ex); }
         }
 
-        app.Run();
-        State.Shutdown();
-        RunState.End();
-        _mutex.ReleaseMutex();
+        try
+        {
+            app.Run();
+        }
+        finally
+        {
+            try { State.Shutdown(); } catch (Exception ex) { Log.Error("Завершение состояния", ex); }
+            RunState.End();
+            try { instanceMutex.ReleaseMutex(); } catch (ApplicationException) { }
+        }
         return 0;
     }
 
