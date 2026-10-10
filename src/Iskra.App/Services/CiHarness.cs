@@ -19,7 +19,8 @@ internal static class CiHarness
         try
         {
             Paths.Init();
-            if (System.Windows.Application.Current == null) _ = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
+            // Без Application: его диспетчер здесь не крутится, и Dispatcher.Invoke в RunOnUi зависал бы.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             var theme = BuiltInThemes.All.FirstOrDefault(t => t.Id == id) ?? throw new ArgumentException("нет темы " + id);
             var opts = new SystemApplyOptions
             {
@@ -28,7 +29,7 @@ internal static class CiHarness
             };
             var sys = new SystemThemeApplier();
             var r = sys.ApplySerializedAsync(theme, opts, (1920, 1080), 90000).GetAwaiter().GetResult();
-            Out($"[{id}] changed: {string.Join(", ", r.Changed)}");
+            Out($"[{id}] {sw.Elapsed.TotalSeconds:F1} s, errors={r.RegErrors}; changed: {string.Join(", ", r.Changed)}");
             Out($"[{id}] skipped: {string.Join(", ", r.Skipped)}");
             var rep = ShortcutIconApplier.LastReport;
             Out($"[{id}] icons applied={rep.Applied} elevated={rep.Elevated} unsupported={rep.Unsupported}");

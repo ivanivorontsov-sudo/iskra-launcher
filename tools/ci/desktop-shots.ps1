@@ -1,6 +1,7 @@
 # Проверка на windows-latest: рабочий стол и Проводник до/после применения тем «Искры».
 param([string]$Exe = "publish\Iskra.exe", [string]$Out = "screens", [string[]]$Themes = @('notebook','spotlight','neon','mica','tiles'))
 $ErrorActionPreference = 'Continue'
+trap { Write-Warning $_; continue }
 Add-Type -AssemblyName System.Drawing, System.Windows.Forms
 New-Item -ItemType Directory -Force $Out | Out-Null
 $report = Join-Path $env:LOCALAPPDATA 'Iskra\ci-report.txt'
@@ -22,15 +23,15 @@ function ExplorerShot($name) {
 # Тестовый рабочий стол: ярлыки, общий ярлык, папка, .url, обычные файлы.
 $desk = [Environment]::GetFolderPath('Desktop'); $pub = [Environment]::GetFolderPath('CommonDesktopDirectory')
 $wsh = New-Object -ComObject WScript.Shell
-foreach ($p in @(@{n='Блокнот';t="$env:WINDIR\System32\notepad.exe"}, @{n='Калькулятор';t="$env:WINDIR\System32\calc.exe"},
+foreach ($p in @(@{n='Notepad';t="$env:WINDIR\System32\notepad.exe"}, @{n='Calculator';t="$env:WINDIR\System32\calc.exe"},
                  @{n='Paint';t="$env:WINDIR\System32\mspaint.exe"}, @{n='PowerShell';t="$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"},
-                 @{n='Командная строка';t="$env:WINDIR\System32\cmd.exe"})) {
+                 @{n='Command Prompt';t="$env:WINDIR\System32\cmd.exe"})) {
   $l = $wsh.CreateShortcut((Join-Path $desk ($p.n + '.lnk'))); $l.TargetPath = $p.t; $l.Save() }
-$l = $wsh.CreateShortcut((Join-Path $pub 'Проводник (общий).lnk')); $l.TargetPath = "$env:WINDIR\explorer.exe"; $l.Save()
-New-Item -ItemType Directory -Force (Join-Path $desk 'Проекты') | Out-Null
-Set-Content (Join-Path $desk 'Сайт.url') "[InternetShortcut]`r`nURL=https://example.com"
-Set-Content (Join-Path $desk 'Заметка.txt') 'текст'
-New-Item -ItemType File -Force (Join-Path $desk 'Документ.docx') | Out-Null
+$l = $wsh.CreateShortcut((Join-Path $pub 'Explorer (Public).lnk')); $l.TargetPath = "$env:WINDIR\explorer.exe"; $l.Save()
+New-Item -ItemType Directory -Force (Join-Path $desk 'Projects') | Out-Null
+Set-Content (Join-Path $desk 'Website.url') "[InternetShortcut]`r`nURL=https://example.com"
+Set-Content (Join-Path $desk 'Note.txt') 'текст'
+New-Item -ItemType File -Force (Join-Path $desk 'Document.docx') | Out-Null
 
 ShowDesktop; Shot 'desktop-before'
 foreach ($t in $Themes) {
