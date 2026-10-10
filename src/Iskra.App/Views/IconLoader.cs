@@ -17,7 +17,15 @@ internal static class IconLoader
     public static BitmapSource? Load(string path)
     {
         if (string.IsNullOrEmpty(path)) return null;
-        return Cache.GetOrAdd(path.ToLowerInvariant(), _ => Extract(path));
+        var key = path.ToLowerInvariant();
+        if (Cache.TryGetValue(key, out var cached)) return cached;
+
+        // ConcurrentDictionary does not accept null reference values. Some shell targets
+        // (notably AppsFolder placeholders and inaccessible/broken shortcuts) legitimately
+        // have no extractable icon, so cache only successful extractions.
+        var extracted = Extract(path);
+        if (extracted != null) Cache.TryAdd(key, extracted);
+        return extracted;
     }
 
     private static BitmapSource? Extract(string path)
