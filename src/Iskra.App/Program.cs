@@ -63,11 +63,11 @@ internal static class Program
         try
         {
             SafeMode.Evaluate();          // Shift при старте или падение в прошлый раз
-    
+
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error("Необработанное исключение", e.ExceptionObject as Exception);
             app.DispatcherUnhandledException += (_, e) => { Log.Error("Исключение UI", e.Exception); e.Handled = true; };
-    
+
             // Программная отрисовка, если GPU недоступен (Tier 0) или в безопасном режиме — спасает от «чёрного/белого» окна.
             try
             {
@@ -75,7 +75,7 @@ internal static class Program
                     System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
             }
             catch { }
-    
+
             // Скрытое окно-приёмник сообщений (для горячих клавиш и трея).
             var messageWindow = new Window
             {
@@ -84,14 +84,14 @@ internal static class Program
             };
             messageWindow.Show();
             messageWindow.Hide();
-    
+
             State = new AppState();
             State.Initialize(messageWindow);
-    
+
             using var tray = new TrayIcon(State);
             tray.Show();
             ExplorerRestarter.ExplorerRestarted += () => tray.Reappear();
-    
+
             var showPump = new Thread(() =>
             {
                 while (showEvent.WaitOne())
@@ -101,7 +101,7 @@ internal static class Program
                 }
             }) { IsBackground = true, Name = "IskraShow" };
             showPump.Start();
-    
+
             if (!State.Settings.FirstRunDone)
             {
                 State.Settings.FirstRunDone = true;
@@ -114,9 +114,9 @@ internal static class Program
             {
                 try { State.ShowLauncher(); } catch (Exception ex) { Log.Error("Показ окна", ex); }
             }
-    
-                app.Run();
-                return 0;
+
+            app.Run();
+            return 0;
         }
         finally
         {
