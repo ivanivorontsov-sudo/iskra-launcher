@@ -170,7 +170,7 @@ public static class L
         ["color.Border"] = ("Рамка", "Border"),
         ["win.intro"] = ("Тема меняет не только Искру, но и Windows: цвета, обои, экран блокировки, курсоры, звуки, рамки окон, меню «Пуск» и панель задач. Перед первым применением сохраняется снимок «как было».", "The theme changes not only Iskra but Windows itself: colours, wallpaper, lock screen, cursors, sounds, window frames, Start menu and taskbar. A “before” snapshot is saved before the first apply."),
         ["win.applyNow"] = ("Применить текущую тему к Windows", "Apply the current theme to Windows"),
-        ["win.restore"] = ("Вернуть как было", "Restore as it was"),
+        ["win.restore"] = ("Вернуть всё как было", "Restore everything as it was"),
         ["win.restoreDone"] = ("Windows возвращена к исходному виду.", "Windows has been restored."),
         ["win.restoreNone"] = ("Снимка нет — Искра ещё ничего не меняла в Windows.", "No snapshot — Iskra hasn't changed Windows yet."),
         ["win.restoring"] = ("Возвращаю Windows как было…", "Restoring Windows…"),

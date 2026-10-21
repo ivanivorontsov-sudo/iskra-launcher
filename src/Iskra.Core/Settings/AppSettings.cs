@@ -58,7 +58,9 @@ public sealed class AppSettings
     /// <summary>Плотность сетки рабочего стола (независимо от темы). Normal = штатные 75 px.</summary>
     public IconSpacing DesktopGrid { get; set; } = IconSpacing.Normal;
     /// <summary>Скрывать стрелку на значках ярлыков, когда тема меняет форму значков.</summary>
-    public bool HideShortcutArrows { get; set; } = true;
+    public bool HideShortcutArrows { get; set; } // ВЫКЛ по умолчанию: требует UAC и правит HKLM
+    /// <summary>Если прошлый сеанс упал — вернуть изменения Windows (HKCU, без UAC) при следующем запуске.</summary>
+    public bool RestoreWindowsAfterCrash { get; set; } = true;
 
     public static readonly Dictionary<string, (string Name, string Url)> WebEngines = new()
     {

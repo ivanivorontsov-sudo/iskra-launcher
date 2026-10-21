@@ -85,7 +85,7 @@ public class SystemPlanV11Tests
     [Fact]
     public void PlanIncludesClassicColors()
     {
-        var plan = SystemPlan.Build(Dark(), new SystemApplyOptions());
+        var plan = SystemPlan.Build(Dark(), new SystemApplyOptions { ClassicColors = true });
         Assert.Contains(plan, w => w.Key == SystemPlan.ColorsKey && w.Name == "WindowText");
         Assert.Contains(plan, w => w.Key == SystemPlan.ColorsKey && w.Name == "Hilight");
     }

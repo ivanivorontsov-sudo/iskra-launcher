@@ -144,7 +144,8 @@ internal sealed partial class SettingsWindow
         var root = new StackPanel();
         root.Children.Add(H1(L.T("nav.start")));
         root.Children.Add(Check(L.T("start.replace"), _state.Settings.ReplaceStartMenu, v => { _state.Settings.ReplaceStartMenu = v; _state.SaveSettings(); _state.RegisterHotkeys(); RestartHook(); }));
-        root.Children.Add(Check(L.T("start.button"), _state.Settings.InterceptStartButton, v => Save(() => _state.Settings.InterceptStartButton = v)));
+        // «Перехват кнопки Пуск на панели задач» удалён: он никогда не был реализован (галочка ничего не делала),
+        // а в Windows 11 24H2+ это требует внедрения в explorer.exe — небезопасно. Клавиша Win перехватывается хуком выше.
         root.Children.Add(Body(L.T("start.style")));
 
         root.Children.Add(H2(L.T("dock.mode")));
@@ -161,7 +162,7 @@ internal sealed partial class SettingsWindow
     private void RestartHook()
     {
         // Переустановить хук «Пуска» при изменении настройки.
-        _state.GetType(); // хук пересоздаётся в AppState через SetupStartHook при следующем старте; здесь просто сохраняем.
+        _state.SetupStartHook(); // сразу, без перезапуска (раньше требовался перезапуск — галочка «не работала»)
     }
 
     // ---------------- Поиск ----------------

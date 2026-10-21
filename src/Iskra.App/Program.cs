@@ -28,7 +28,7 @@ internal static class Program
                     RestoreLockScreenFromBackup();
                     return 0;
                 case "--restore-silent":
-                    try { return new SystemThemeApplier().Restore(includeHklm: AppInfo.IsAdmin()); } catch (Exception ex) { Log.Error("restore-silent", ex); return 1; }
+                    try { return new SystemThemeApplier().RestoreAll().Errors; } /* при удалении: HKCU сразу, HKLM — через UAC */ catch (Exception ex) { Log.Error("restore-silent", ex); return 1; }
                 case "--ci-apply-theme" when args.Length >= 2:
                     return CiHarness.ApplyTheme(args[1]);
                 case "--ci-repair":
@@ -62,7 +62,9 @@ internal static class Program
         RunState.Begin();                 // маркер сеанса (для определения аварий)
         try
         {
+            bool crashed = RunState.CrashedLastTime;
             SafeMode.Evaluate();          // Shift при старте или падение в прошлый раз
+            if (crashed) CrashRestore.Run();
 
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Error("Необработанное исключение", e.ExceptionObject as Exception);
@@ -140,5 +142,23 @@ internal static class Program
     public static void Quit()
     {
         Application.Current.Shutdown();
+    }
+}
+
+/// <summary>Прошлый сеанс упал — возвращаем Windows как было (только HKCU и файлы, без UAC), если пользователь не выключил это.</summary>
+internal static class CrashRestore
+{
+    public static void Run()
+    {
+        try
+        {
+            var settings = Iskra.Core.Settings.AppSettings.LoadOrHeal(Paths.Settings, out _);
+            if (settings != null && !settings.RestoreWindowsAfterCrash) return;
+            var sys = new SystemThemeApplier();
+            if (!sys.HasSnapshot) return;
+            int e = sys.Restore(includeHklm: AppInfo.IsAdmin(), clearOnSuccess: true);
+            Log.Warn($"Аварийное завершение прошлого сеанса: изменения Windows возвращены (ошибок: {e}).");
+        }
+        catch (Exception ex) { Log.Error("Откат после сбоя", ex); }
     }
 }

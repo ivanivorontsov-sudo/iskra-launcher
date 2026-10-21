@@ -58,7 +58,7 @@ public class ClassicContrastTests
     [MemberData(nameof(Themes))]
     public void EveryClassicPairIsReadable(string id)
     {
-        var plan = SystemPlan.Build(BuiltInThemes.Get(id).System, new SystemApplyOptions());
+        var plan = SystemPlan.Build(BuiltInThemes.Get(id).System, new SystemApplyOptions { ClassicColors = true });
         Assert.True(Argb.Contrast(C(plan, "WindowText"), C(plan, "Window")) >= 7, "WindowText");
         Assert.True(Argb.Contrast(C(plan, "MenuText"), C(plan, "Menu")) >= 7, "MenuText");
         Assert.True(Argb.Contrast(C(plan, "ButtonText"), C(plan, "ButtonFace")) >= 7, "ButtonText");
@@ -73,7 +73,7 @@ public class ClassicContrastTests
         // Светлый режим приложений + тёмные классические цвета давали «засветлённый» Проводник.
         foreach (var t in BuiltInThemes.All)
         {
-            var plan = SystemPlan.Build(t.System, new SystemApplyOptions());
+            var plan = SystemPlan.Build(t.System, new SystemApplyOptions { ClassicColors = true });
             bool lightWindow = Argb.Contrast(C(plan, "Window"), new Argb(0xFF, 0, 0, 0)) > 10;
             Assert.Equal(!t.System.AppsDark, lightWindow);
         }
@@ -138,6 +138,7 @@ public class DesktopRestoreScriptTests
     {
         var a = AppSettings.FromJson("{}");
         Assert.Equal(IconSpacing.Normal, a.DesktopGrid);
-        Assert.True(a.HideShortcutArrows);
+        Assert.False(a.HideShortcutArrows); // HKLM + UAC — только по явному согласию
+        Assert.True(a.RestoreWindowsAfterCrash);
     }
 }

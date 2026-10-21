@@ -27,8 +27,8 @@ internal static class HklmWriter
                 FileName = AppInfo.ExePath, Arguments = $"--hklm-writes \"{file}\"",
                 UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden,
             });
-            p?.WaitForExit(60000);
-            return p != null && p.ExitCode == 0;
+            if (p == null || !p.WaitForExit(60000)) return false;
+            return p.ExitCode == 0;
         }
         catch (System.ComponentModel.Win32Exception) { Log.Warn("HKLM: UAC отклонён"); return false; }
         catch (Exception ex) { Log.Error("HKLM writes", ex); return false; }

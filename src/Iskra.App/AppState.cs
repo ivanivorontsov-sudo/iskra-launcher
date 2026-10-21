@@ -154,10 +154,11 @@ internal sealed class AppState
 
     public bool IsHotkeyFree(Hotkey hk) => _hotkeys.IsFree(hk);
 
-    private void SetupStartHook()
+    public void SetupStartHook()
     {
         _startHook?.Dispose();
-        if (Settings.ReplaceStartMenu)
+        _startHook = null;
+        if (Settings.ReplaceStartMenu && !SafeMode.Active)
         {
             _startHook = new StartKeyHook(ToggleStartMenu);
             _startHook.Install();
@@ -225,8 +226,8 @@ internal sealed class AppState
             {
                 // Значки Windows (папки/корзина/ярлыки) меняем только если тема это разрешает (и это обратимо).
                 // Форма значков Windows включается вместе с темой, иначе папки остаются штатными.
-                Settings.SystemOptions.ShellIcons = true;
-                Settings.SystemOptions.ShapedShortcutIcons = true;
+                // Раньше здесь при КАЖДОЙ смене темы принудительно включались значки папок и ярлыков —
+                // выключить их было нельзя («залипали»). Теперь действуют только галочки пользователя.
                 Settings.SystemOptions.HideShortcutArrows = Settings.HideShortcutArrows;
                 Settings.SystemOptions.GridDensity = Settings.DesktopGrid;
                 var screen = ScreenSize();
@@ -316,7 +317,7 @@ internal sealed class AppState
         var t = Settings.CurrentTheme().Clone();
         t.System.AppsDark = !t.System.AppsDark; t.System.SystemDark = !t.System.SystemDark;
         var o = new SystemApplyOptions { Colors = true, Wallpaper = false, LockScreen = false, Cursors = false, Sounds = false, IconSpacing = false, WindowFrames = false, ContextMenu = false, Explorer = false, Taskbar = false, WindowMetrics = false };
-        _ = System.ApplySerializedAsync(t, o, ScreenSize());
+        _ = System.ApplySerializedAsync(t, o, ScreenSize(), undoDisabled: false); // только цвета, остальное не трогаем
     }
 
     public void OnLaunch(SearchItem item, string? query)

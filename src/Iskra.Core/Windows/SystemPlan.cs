@@ -21,6 +21,8 @@ public sealed class SystemApplyOptions
     public bool ShellIcons { get; set; }              // значки папок/этот компьютер/корзина (ЭКСПЕРИМЕНТ, по умолчанию выкл.)
     public bool ShapedShortcutIcons { get; set; }     // перерисовать значки ярлыков рабочего стола/Пуска в форме темы (с бэкапом)
     public bool HideShortcutArrows { get; set; }      // скрыть стрелку ярлыка (Shell Icons 29 → прозрачный значок), с откатом
+    public bool ClassicColors { get; set; }           // классические цвета Win32 (Control Panel\Colors) — ВЫКЛ: ломали читаемость старых окон
+    public bool ListviewShadow { get; set; } = true;  // тень под подписями значков рабочего стола
     /// <summary>Плотность сетки рабочего стола из настроек (Unchanged = как в теме).</summary>
     public Iskra.Core.Themes.IconSpacing GridDensity { get; set; } = Iskra.Core.Themes.IconSpacing.Unchanged;
 }
@@ -126,7 +128,7 @@ public static class SystemPlan
             Add(DesktopKey, "AutoColorization", RegKind.DWord, 0, "colors"); // не подбирать акцент по обоям
         }
 
-        if (o.Colors)
+        if (o.Colors && o.ClassicColors)
         {
             // Классические цвета (HKCU\Control Panel\Colors) — для старых окон/диалогов. Значения "R G B".
             var accent = Argb.Parse(p.Accent, new Argb(0xFF, 0x5A, 0xA9, 0xFF));
@@ -152,7 +154,7 @@ public static class SystemPlan
             Argb hilightText = Argb.Readable(new Argb(0xFF, 0xFF, 0xFF, 0xFF), hilight, 4.5);
             Argb inactiveTitleText = Argb.Readable(winText, btnFace, 4.5);
             Argb grayText = Argb.Readable(dark ? new(0xFF,0x80,0x80,0x86) : new(0xFF,0x5C,0x5C,0x62), win, 3.0);
-            void Col(string name, Argb c) => Add(ColorsKey, name, RegKind.String, $"{c.R} {c.G} {c.B}", "colors");
+            void Col(string name, Argb c) => Add(ColorsKey, name, RegKind.String, $"{c.R} {c.G} {c.B}", "classiccolors");
             Col("Window", win); Col("WindowText", winText);
             Col("Menu", menu); Col("MenuText", menuText);
             Col("ButtonFace", btnFace); Col("ButtonText", btnText);
@@ -189,10 +191,10 @@ public static class SystemPlan
         }
 
         if (o.HideShortcutArrows && assets?.BlankIcon is { Length: > 0 } blank)
-            w.Add(new RegWrite(RegHive.LocalMachine, ShellIconsKeyLm, "29", RegKind.String, blank + ",0", "shellicons")); // только HKLM работает
+            w.Add(new RegWrite(RegHive.LocalMachine, ShellIconsKeyLm, "29", RegKind.String, blank + ",0", "arrow")); // только HKLM работает
 
         // Тень под подписями значков: подписи рабочего стола Windows всегда белые — на светлых обоях без тени не читаются.
-        if (o.IconSpacing) Add(AdvancedKey, "ListviewShadow", RegKind.DWord, 1, "icons");
+        if (o.IconSpacing && o.ListviewShadow) Add(AdvancedKey, "ListviewShadow", RegKind.DWord, 1, "icons");
 
         if (o.ContextMenu)
         {

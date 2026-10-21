@@ -129,17 +129,38 @@ internal sealed partial class SettingsWindow
         root.Children.Add(Body(L.T("win.intro")));
 
         var o = _state.Settings.SystemOptions;
+
+        // Политики (gpedit/реестр Policies): заблокированные пункты показываем сразу, а не «молча не работает».
+        var locks = SystemThemeApplier.PolicyLocks();
+        if (locks.Count > 0)
+        {
+            root.Children.Add(H2("🔒 " + (L.English ? "Locked by policy" : "Заблокировано политикой")));
+            foreach (var l in locks) root.Children.Add(Body("• " + SystemThemeApplier.LockText(l)));
+        }
+
         root.Children.Add(H2(L.T("themes.applyWindows")));
-        root.Children.Add(Check(L.T("win.opt.Colors"), o.Colors, v => Save(() => o.Colors = v)));
-        root.Children.Add(Check(L.T("win.opt.Wallpaper"), o.Wallpaper, v => Save(() => o.Wallpaper = v)));
-        root.Children.Add(Check(L.T("win.opt.LockScreen"), o.LockScreen, v => Save(() => o.LockScreen = v)));
-        root.Children.Add(Check(L.T("win.opt.Cursors"), o.Cursors, v => Save(() => o.Cursors = v)));
-        root.Children.Add(Check(L.T("win.opt.Sounds"), o.Sounds, v => Save(() => o.Sounds = v)));
-        root.Children.Add(Check(L.T("win.opt.IconSpacing"), o.IconSpacing, v => Save(() => o.IconSpacing = v)));
-        root.Children.Add(Check(L.T("win.opt.WindowFrames"), o.WindowFrames, v => Save(() => o.WindowFrames = v)));
-        root.Children.Add(Check(L.T("win.opt.ContextMenu"), o.ContextMenu, v => Save(() => o.ContextMenu = v)));
-        root.Children.Add(Check(L.T("win.opt.Explorer"), o.Explorer, v => Save(() => o.Explorer = v)));
-        root.Children.Add(Check(L.T("win.opt.Taskbar"), o.Taskbar, v => Save(() => o.Taskbar = v)));
+        root.Children.Add(Body(L.English ? "Each item is independent. Unticking an item immediately returns everything Iskra changed in it."
+                                         : "Каждый пункт независим. Снятие галочки сразу возвращает всё, что Искра в нём меняла."));
+        // Галочка: включение — сохранить (применится кнопкой/темой), выключение — сразу полный откат пункта.
+        CheckBox Tweak(string label, bool value, Action<bool> set)
+            => Check(label, value, v => { set(v); _state.SaveSettings(); if (!v) UndoNow(); });
+        root.Children.Add(Tweak(L.T("win.opt.Colors"), o.Colors, v => o.Colors = v));
+        root.Children.Add(Tweak(L.English ? "   Classic Win32 colours (old dialogs; may reduce readability)" : "   Классические цвета старых окон (может ухудшить читаемость)", o.ClassicColors, v => o.ClassicColors = v));
+        root.Children.Add(Tweak(L.T("win.opt.Wallpaper"), o.Wallpaper, v => o.Wallpaper = v));
+        root.Children.Add(Tweak(L.T("win.opt.LockScreen"), o.LockScreen, v => o.LockScreen = v));
+        root.Children.Add(Tweak(L.T("win.opt.Cursors"), o.Cursors, v => o.Cursors = v));
+        root.Children.Add(Tweak(L.T("win.opt.Sounds"), o.Sounds, v => o.Sounds = v));
+        root.Children.Add(Tweak(L.T("win.opt.IconSpacing"), o.IconSpacing, v => o.IconSpacing = v));
+        root.Children.Add(Tweak(L.English ? "   Shadow under desktop icon labels" : "   Тень под подписями значков", o.ListviewShadow, v => o.ListviewShadow = v));
+        root.Children.Add(Tweak(L.T("win.opt.WindowFrames"), o.WindowFrames, v => o.WindowFrames = v));
+        root.Children.Add(Tweak(L.English ? "Scrollbar width / title bar height (classic apps)" : "Ширина полос прокрутки и высота заголовков (классические программы)", o.WindowMetrics, v => o.WindowMetrics = v));
+        root.Children.Add(Tweak(L.T("win.opt.ContextMenu"), o.ContextMenu, v => o.ContextMenu = v));
+        root.Children.Add(Tweak(L.T("win.opt.Explorer"), o.Explorer, v => o.Explorer = v));
+        root.Children.Add(Tweak(L.T("win.opt.Taskbar"), o.Taskbar, v => o.Taskbar = v));
+        root.Children.Add(Tweak(L.English ? "Theme-shaped shortcut icons on desktop/Start (backed up)" : "Значки ярлыков в форме темы (с резервной копией)", o.ShapedShortcutIcons, v => o.ShapedShortcutIcons = v));
+        root.Children.Add(Tweak(L.English ? "EXPERIMENTAL: folder / This PC / Recycle Bin icons" : "ЭКСПЕРИМЕНТ: значки папок, «Этот компьютер», корзины", o.ShellIcons, v => o.ShellIcons = v));
+        root.Children.Add(Check(L.English ? "If Iskra crashes, return Windows as it was on next start" : "Если Искра упала — при следующем запуске вернуть Windows как было",
+            _state.Settings.RestoreWindowsAfterCrash, v => { _state.Settings.RestoreWindowsAfterCrash = v; _state.SaveSettings(); }));
 
         // Рабочий стол: плотность сетки, стрелки ярлыков, починка.
         root.Children.Add(H2(L.T("desk.title")));
@@ -155,7 +176,11 @@ internal sealed partial class SettingsWindow
             System.Threading.Tasks.Task.Run(() => DesktopGrid.Apply(px.H, px.V)); // вживую, без перезапуска
         };
         root.Children.Add(LabeledRow(L.T("desk.grid"), grid));
-        root.Children.Add(Check(L.T("desk.arrows"), _state.Settings.HideShortcutArrows, v => { _state.Settings.HideShortcutArrows = v; _state.SaveSettings(); }));
+        root.Children.Add(Check(L.T("desk.arrows") + (L.English ? " (admin, UAC)" : " (нужны права администратора)"), _state.Settings.HideShortcutArrows, v =>
+        {
+            _state.Settings.HideShortcutArrows = v; _state.Settings.SystemOptions.HideShortcutArrows = v; _state.SaveSettings();
+            if (!v) UndoNow();
+        }));
         root.Children.Add(Body(L.T("desk.limits")));
         root.Children.Add(Btn(L.T("desk.repair"), () =>
         {
@@ -195,12 +220,30 @@ internal sealed partial class SettingsWindow
 
     private void Save(Action mutate) { mutate(); _state.SaveSettings(); }
 
+    /// <summary>Сразу откатить всё, что относится к выключенным пунктам.</summary>
+    private async void UndoNow()
+    {
+        try
+        {
+            if (_winStatus != null) _winStatus.Text = "…";
+            var undone = await _state.System.UndoDisabledAsync(_state.Settings.SystemOptions);
+            if (_winStatus != null)
+                _winStatus.Text = undone.Count > 0
+                    ? (L.English ? "Returned as it was: " : "Возвращено как было: ") + string.Join(", ", undone)
+                    : (L.English ? "Nothing to undo — Iskra had not changed this." : "Откатывать нечего — Искра это не меняла.");
+        }
+        catch (Exception ex) { Log.Error("Откат пункта", ex); }
+    }
+
     private async void ApplyToWindows()
     {
         _winStatus.Text = "…";
         var theme = _state.Settings.CurrentTheme();
         var report = await _state.System.ApplyAsync(theme, _state.Settings.SystemOptions, _state.ScreenSize());
         _winStatus.Text = L.F("win.applied", theme.DisplayName(L.English), string.Join(", ", report.Changed));
+        if (report.Undone.Count > 0) _winStatus.Text += "\n" + (L.English ? "Returned (unticked): " : "Возвращено (галочки сняты): ") + string.Join(", ", report.Undone);
+        if (report.Skipped.Count > 0) _winStatus.Text += "\n" + (L.English ? "Skipped: " : "Пропущено: ") + string.Join("; ", report.Skipped);
+        if (report.Locked.Count > 0) _winStatus.Text += "\n🔒 " + string.Join("\n🔒 ", report.Locked);
         if (_state.Settings.SystemOptions.ContextMenu && report.Changed.Count > 0)
         {
             var mb = MessageBox.Show(L.T("win.needExplorer"), L.T("app.name"), MessageBoxButton.YesNo, MessageBoxImage.Question);

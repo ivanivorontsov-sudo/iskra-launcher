@@ -95,11 +95,13 @@ internal sealed class RegistryApplier
         _snapshot.Registry.Add(orig);
     }
 
-    private List<RegOriginal> SnapshotSubtree(RegHive hive, string key)
+    /// <summary>Снимок удаляемого ключа ЦЕЛИКОМ: значения и вложенные ключи (раньше вложенные терялись —
+    /// например InprocServer32 классического меню, и откат его не возвращал).</summary>
+    private List<RegOriginal> SnapshotSubtree(RegHive hive, string key, int depth = 0)
     {
         var list = new List<RegOriginal>();
         using var k = Root(hive).OpenSubKey(key);
-        if (k == null) return list;
+        if (k == null || depth > 8) return list;
         foreach (var name in k.GetValueNames())
         {
             var val = k.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
@@ -114,7 +116,19 @@ internal sealed class RegistryApplier
             }
             list.Add(o);
         }
+        foreach (var sub in k.GetSubKeyNames())
+        {
+            var child = key + "\\" + sub;
+            list.Add(new RegOriginal { Hive = hive, Key = child, Name = "", KeyTreeExisted = true, Subtree = SnapshotSubtree(hive, child, depth + 1) });
+        }
         return list;
+    }
+
+    /// <summary>Чтение значения для проверки записи и поиска политик.</summary>
+    public static object? Read(RegHive hive, string key, string name)
+    {
+        using var k = Root(hive).OpenSubKey(key);
+        return k?.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
     }
 
     /// <summary>Верхний из отсутствующих ключей в цепочке (его целиком удалим при откате).</summary>
@@ -141,15 +155,18 @@ internal sealed class RegistryApplier
     };
 
     /// <summary>Откат снимка прямо из приложения (быстрый путь, без скрипта). Возвращает число ошибок.</summary>
-    public static int Restore(SystemSnapshot s, bool includeHklm)
+    public static int Restore(SystemSnapshot s, bool includeHklm) => Restore(s.Registry, includeHklm);
+
+    public static int Restore(IEnumerable<RegOriginal> originals, bool includeHklm)
     {
         int errors = 0;
+        var all = originals.ToList();
         // Значения сначала, удаление созданных ключей — в конце (от длинных к коротким).
-        foreach (var r in s.Registry.Where(r => includeHklm || r.Hive == RegHive.CurrentUser))
+        foreach (var r in all.Where(r => includeHklm || r.Hive == RegHive.CurrentUser))
         {
             try { RestoreOne(r); } catch (Exception ex) { errors++; Log.Error($"Откат {r.Hive}\\{r.Key} [{r.Name}]", ex); }
         }
-        foreach (var r in s.Registry.Where(r => (includeHklm || r.Hive == RegHive.CurrentUser) && !r.KeyTreeExisted && r.CreatedKeyRoot != null)
+        foreach (var r in all.Where(r => (includeHklm || r.Hive == RegHive.CurrentUser) && !r.KeyTreeExisted && r.CreatedKeyRoot != null)
                                     .OrderByDescending(r => r.CreatedKeyRoot!.Length))
         {
             try { Root(r.Hive).DeleteSubKeyTree(r.CreatedKeyRoot!, false); } catch (Exception ex) { errors++; Log.Error($"Удаление ключа {r.CreatedKeyRoot}", ex); }
@@ -159,7 +176,12 @@ internal sealed class RegistryApplier
 
     private static void RestoreOne(RegOriginal r)
     {
-        if (r.Subtree != null) { foreach (var sub in r.Subtree) RestoreOne(sub); return; }
+        if (r.Subtree != null)
+        {
+            if (r.KeyTreeExisted) Root(r.Hive).CreateSubKey(r.Key, true)?.Dispose(); // пустой ключ тоже важен (классическое меню)
+            foreach (var sub in r.Subtree) RestoreOne(sub);
+            return;
+        }
         if (!r.KeyTreeExisted) return; // ключ удалим отдельным проходом
         if (!r.ValueExisted)
         {

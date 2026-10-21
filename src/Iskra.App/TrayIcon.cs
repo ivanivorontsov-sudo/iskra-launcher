@@ -88,7 +88,7 @@ internal sealed class TrayIcon : IDisposable
             m.Items.Add(L.T("tray.restore"), null, (_, _) => _state.RestoreWindows());
 
         var pause = new ToolStripMenuItem(L.T("tray.pause")) { Checked = !_state.Settings.ReplaceStartMenu };
-        pause.Click += (_, _) => { _state.Settings.ReplaceStartMenu = !_state.Settings.ReplaceStartMenu; _state.SaveSettings(); };
+        pause.Click += (_, _) => { _state.Settings.ReplaceStartMenu = !_state.Settings.ReplaceStartMenu; _state.SaveSettings(); _state.RegisterHotkeys(); _state.SetupStartHook(); pause.Checked = !_state.Settings.ReplaceStartMenu; };
         m.Items.Add(pause);
 
         m.Items.Add(new ToolStripSeparator());

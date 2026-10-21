@@ -10,7 +10,12 @@ using Microsoft.Win32;
 
 namespace Iskra.App.Services;
 
-public sealed record ApplyReport(List<string> Changed, List<string> Skipped, int RegErrors);
+public sealed record ApplyReport(List<string> Changed, List<string> Skipped, int RegErrors)
+{
+    /// <summary>Что заблокировано политикой организации (GPO/MDM) или не «прилипло» после записи.</summary>
+    public List<string> Locked { get; init; } = new();
+    public List<string> Undone { get; init; } = new();
+}
 
 /// <summary>
 /// Применяет тему ко всей Windows: цвета, обои, экран блокировки, курсоры, звуки, интервал значков,
@@ -56,14 +61,25 @@ internal sealed class SystemThemeApplier
         catch (Exception ex) { Log.Error("Скрипт восстановления", ex); }
     }
 
-    public async Task<ApplyReport> ApplyAsync(ThemeDefinition theme, Iskra.Core.Windows.SystemApplyOptions options, (int w, int h) screen)
+    public async Task<ApplyReport> ApplyAsync(ThemeDefinition theme, Iskra.Core.Windows.SystemApplyOptions options, (int w, int h) screen, bool undoDisabled = true)
     {
         var changed = new List<string>();
         var skipped = new List<string>();
+        var lockedOut = new List<string>();
+        var undone = new List<string>();
         var applier = new RegistryApplier(Snapshot);
 
         await Task.Run(() =>
         {
+            // 0. Выключенные пункты больше не «залипают»: всё, что Искра раньше меняла в них, возвращается как было.
+            if (undoDisabled) undone.AddRange(UndoDisabledCore(options));
+
+            // 0.1. Windows 11 Enterprise: групповые политики / MDM. Заблокированные пункты не трогаем и говорим об этом.
+            var locks = PolicyLocks();
+            var lockedCats = locks.Select(l => l.Category).ToHashSet();
+            foreach (var l in locks) lockedOut.Add(LockText(l));
+            options = CloneWithout(options, lockedCats);
+
             // 1. Ресурсы (курсоры/звуки/обои) — генерируем до записи в реестр.
             SystemAssets assets = new();
             if (options.Cursors)
@@ -88,6 +104,8 @@ internal sealed class SystemThemeApplier
             // 2. Реестровые изменения (цвета, звуки, курсоры, значки, контекстное меню, панель задач).
             var plan = SystemPlan.Build(theme.System, options, assets);
             applier.Apply(plan); // HKLM без прав не запишется, но исходные значения уже в снимке
+            foreach (var cat in TweakControl.VerifyWrites(plan.Where(w => w.Hive == RegHive.CurrentUser), RegistryApplier.Read))
+                lockedOut.Add((Iskra.Core.Loc.L.English ? "not applied (blocked by policy, security software or no rights): " : "не применилось (мешает политика организации, защита или нет прав): ") + L(cat));
             SaveSnapshot();
             var lmPending = plan.Where(w => w.Hive == RegHive.LocalMachine && !HklmMatches(w)).ToList();
             if (lmPending.Count > 0 && !AppInfo.IsAdmin())
@@ -165,7 +183,98 @@ internal sealed class SystemThemeApplier
             try { BackdropCaps.Invalidate(); } catch { }
         });
 
-        return new ApplyReport(changed, skipped, 0);
+        return new ApplyReport(changed, skipped, 0) { Locked = lockedOut, Undone = undone };
+    }
+
+    // ---------------- Отдельные пункты: выключение = полный откат ----------------
+
+    /// <summary>Выключить один пункт (или несколько) прямо сейчас — вернуть всё, что Искра в нём меняла.</summary>
+    public Task<List<string>> UndoDisabledAsync(Iskra.Core.Windows.SystemApplyOptions options)
+        => Task.Run(async () =>
+        {
+            await ApplyGate.WaitAsync();
+            try { return UndoDisabledCore(options); } finally { ApplyGate.Release(); }
+        });
+
+    private List<string> UndoDisabledCore(Iskra.Core.Windows.SystemApplyOptions o)
+    {
+        var undone = new List<string>();
+        try
+        {
+            var cats = TweakControl.DisabledCategories(o);
+            var taken = TweakControl.Take(Snapshot, cats);
+            var hkcu = taken.Where(r => r.Hive == RegHive.CurrentUser).ToList();
+            var hklm = taken.Where(r => r.Hive == RegHive.LocalMachine).ToList();
+            int errors = RegistryApplier.Restore(hkcu, includeHklm: false);
+            if (hklm.Count > 0)
+            {
+                bool ok = AppInfo.IsAdmin()
+                    ? RegistryApplier.Restore(hklm, includeHklm: true) == 0
+                    : HklmWriter.RunElevated(hklm.Select(TweakControl.ToRestoreWrite).ToList());
+                if (!ok) { Snapshot.Registry.AddRange(hklm); errors++; } // UAC отклонён — запомним, повторим позже
+            }
+            foreach (var c in taken.Select(r => r.Category).Distinct()) undone.Add(L(c));
+
+            bool icons = taken.Any(r => r.Category is "shellicons" or "arrow" or "icons");
+            if (!o.Cursors && Snapshot.CursorsTouched) { WallpaperManager.ReloadCursors(); Snapshot.CursorsTouched = false; }
+            if (!o.Wallpaper && Snapshot.Wallpaper != null)
+            {
+                try { WallpaperManager.Restore(Snapshot.Wallpaper); Snapshot.Wallpaper = null; undone.Add(L("wallpaper")); }
+                catch (Exception ex) { Log.Error("Откат обоев", ex); errors++; }
+            }
+            if (!o.LockScreen && Snapshot.LockScreenTouched && !string.IsNullOrEmpty(Snapshot.LockScreenBackup) && File.Exists(Snapshot.LockScreenBackup))
+            {
+                if (LockScreenManager.TrySet(Snapshot.LockScreenBackup)) { Snapshot.LockScreenTouched = false; undone.Add(L("lockscreen")); }
+            }
+            if (!o.ShapedShortcutIcons && (Snapshot.Shortcuts.Count > 0 || Snapshot.FileIcons.Count > 0))
+            {
+                try { ShortcutIconApplier.Restore(Snapshot); undone.Add(L("shortcuticons")); icons = true; }
+                catch (Exception ex) { Log.Error("Откат значков ярлыков", ex); errors++; }
+            }
+            if (!o.ShellIcons && !o.HideShortcutArrows && !o.ShapedShortcutIcons) Snapshot.ShellIconsTouched = false;
+            if (!o.IconSpacing) Snapshot.IconSpacingTouched = false;
+            if (!o.ContextMenu) Snapshot.ContextMenuTouched = false;
+            if (!o.WindowFrames) RunOnUi(() => { try { DwmWatcher.Instance.Stop(); } catch { } });
+            if (Snapshot.Registry.All(r => r.Hive != RegHive.LocalMachine)) Snapshot.HklmTouched = false;
+
+            if (undone.Count > 0)
+            {
+                if (!o.IconSpacing || !o.WindowMetrics) { try { DesktopGrid.ApplyFromRegistry(); } catch { } FontApply.PushNonClientFromRegistry(); }
+                if (icons) ShortcutIconApplier.RefreshIcons(restartExplorer: taken.Any(r => r.Category == "arrow"));
+                ThemeBroadcast.Notify();
+                SaveSnapshot();
+                Log.Info("Откат выключенных пунктов: " + string.Join(", ", undone) + (errors > 0 ? $" (ошибок: {errors})" : ""));
+            }
+        }
+        catch (Exception ex) { Log.Error("Откат выключенных пунктов", ex); }
+        return undone;
+    }
+
+    // ---------------- Политики организации (Windows 11 Enterprise) ----------------
+
+    public static List<TweakControl.PolicyLock> PolicyLocks()
+    {
+        try { return TweakControl.DetectLocks(RegistryApplier.Read); }
+        catch (Exception ex) { Log.Error("Проверка политик", ex); return new(); }
+    }
+
+    public static string LockText(TweakControl.PolicyLock l)
+        => (Iskra.Core.Loc.L.English ? "Locked by your organisation: " + L(l.Category) + " — " + l.WhatEn : "Заблокировано политикой организации: " + L(l.Category) + " — " + l.WhatRu) + " (" + l.Where + ")";
+
+    private static Iskra.Core.Windows.SystemApplyOptions CloneWithout(Iskra.Core.Windows.SystemApplyOptions o, HashSet<string> locked)
+    {
+        var c = System.Text.Json.JsonSerializer.Deserialize<Iskra.Core.Windows.SystemApplyOptions>(System.Text.Json.JsonSerializer.Serialize(o))!;
+        if (locked.Contains("colors")) { c.Colors = false; c.ClassicColors = false; }
+        if (locked.Contains("classiccolors")) c.ClassicColors = false;
+        if (locked.Contains("wallpaper")) c.Wallpaper = false;
+        if (locked.Contains("lockscreen")) c.LockScreen = false;
+        if (locked.Contains("cursors")) c.Cursors = false;
+        if (locked.Contains("sounds")) c.Sounds = false;
+        if (locked.Contains("contextmenu")) c.ContextMenu = false;
+        if (locked.Contains("taskbar")) c.Taskbar = false;
+        if (locked.Contains("shellicons")) { c.ShellIcons = false; c.ShapedShortcutIcons = false; }
+        if (locked.Contains("arrow")) c.HideShortcutArrows = false;
+        return c;
     }
 
     private static void RunOnUi(Action a)
@@ -177,7 +286,7 @@ internal sealed class SystemThemeApplier
     }
 
     /// <summary>Применение темы с сериализацией (без гонок) и защитой по времени, чтобы ничего не «подвисало» навсегда.</summary>
-    public async Task<ApplyReport> ApplySerializedAsync(ThemeDefinition theme, Iskra.Core.Windows.SystemApplyOptions options, (int w, int h) screen, int timeoutMs = 25000)
+    public async Task<ApplyReport> ApplySerializedAsync(ThemeDefinition theme, Iskra.Core.Windows.SystemApplyOptions options, (int w, int h) screen, int timeoutMs = 25000, bool undoDisabled = true)
     {
         if (!await ApplyGate.WaitAsync(timeoutMs))
         {
@@ -186,7 +295,7 @@ internal sealed class SystemThemeApplier
         }
         try
         {
-            var task = ApplyAsync(theme, options, screen);
+            var task = ApplyAsync(theme, options, screen, undoDisabled);
             var done = await Task.WhenAny(task, Task.Delay(timeoutMs));
             if (done != task) { Log.Warn("Применение темы превысило лимит времени; продолжит в фоне."); return new ApplyReport(new(), new(), 0); }
             return await task;
@@ -319,8 +428,8 @@ internal sealed class SystemThemeApplier
                 WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
             };
             var p = System.Diagnostics.Process.Start(psi);
-            p?.WaitForExit(120000);
-            return p != null && p.ExitCode == 0;
+            if (p == null || !p.WaitForExit(120000)) return false;
+            return p.ExitCode == 0;
         }
         catch (System.ComponentModel.Win32Exception) { return false; } // пользователь отменил UAC
         catch (Exception ex) { Log.Error("Повышение для отката", ex); return false; }
@@ -361,6 +470,9 @@ internal sealed class SystemThemeApplier
         "metrics" => Iskra.Core.Loc.L.English ? "window metrics" : "метрики окон",
         "shellicons" => Iskra.Core.Loc.L.English ? "folder/PC/bin icons" : "значки папок/ПК/корзины",
         "shortcuticons" => Iskra.Core.Loc.L.English ? "shortcut icons" : "значки ярлыков",
+        "classiccolors" => Iskra.Core.Loc.L.English ? "classic window colours" : "классические цвета окон",
+        "arrow" => Iskra.Core.Loc.L.English ? "shortcut arrows" : "стрелки ярлыков",
+        "explorer" => Iskra.Core.Loc.L.English ? "compact Explorer" : "компактный Проводник",
         _ => cat,
     };
 }
